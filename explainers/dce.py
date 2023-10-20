@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import torch
 
+
 class DistributionalCounterfactualExplainer:
     def __init__(self, model):
         """
@@ -49,7 +50,11 @@ class DistributionalCounterfactualExplainer:
                         mu[k][i, j]
                         * (torch.dot(theta, X[i]) - torch.dot(theta, X_prime[j])) ** 2
                     )
-                    term2 = lambda_val * nu[i, j] * (self.model(X[i]) - self.model(X_prime[j])) ** 2
+                    term2 = (
+                        lambda_val
+                        * nu[i, j]
+                        * (self.model(X[i]) - self.model(X_prime[j])) ** 2
+                    )
                     Q += term1 + term2.item()
 
         # Compute gradient

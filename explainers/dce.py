@@ -8,13 +8,9 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 
 class DistributionalCounterfactualExplainer:
-    def __init__(self, model, X, epsilon=0.1, lambda_val=0.5, n_proj=50):
-        """
-        Initialize the counterfactual explainer.
-
-        Parameters:
-        - model: The predictive model to be explained.
-        """
+    def __init__(self, model, X, epsilon=0.1, lr=0.1, lambda_val=0.5, n_proj=50):
+        # ... (rest of the code)
+        # Initialize the Adam optimizer
         self.model = model
 
         self.X_prime = torch.from_numpy(X).float()
@@ -24,7 +20,11 @@ class DistributionalCounterfactualExplainer:
         self.X.requires_grad_(True).retain_grad()
         self.best_X = None
 
-        self.X_grads = None
+        self.Qx_grads = None
+
+        self.optimizer = optim.Adam(
+            [self.X], lr=lr
+        )  # You can set your preferred learning rate.
 
         self.y = self.model(self.X)
         self.y_prime = self.y.clone()
@@ -95,16 +95,22 @@ class DistributionalCounterfactualExplainer:
         outputs = self.model(self.X)
         loss = outputs.sum()
 
-        assert self.X.requires_grad, "self.X does not require gradients."
+        # Ensure gradients are zeroed out before backward pass
+        self.X.grad = None
         loss.backward()
+        model_grads = self.X.grad.clone()  # Store the gradients
 
         # Compute the first term
         for i in range(n):
             for k, theta in enumerate(thetas):
                 mu = mu_list[k]
                 for j in range(m):
-                    diff1 = (torch.dot(theta, self.X[i]) - torch.dot(theta, self.X_prime[j])).item()
-                    grads[i].add_(mu[i][j].item() * diff1 * theta)  # Using in-place addition
+                    diff1 = (
+                        torch.dot(theta, self.X[i]) - torch.dot(theta, self.X_prime[j])
+                    ).item()
+                    grads[i].add_(
+                        mu[i][j].item() * diff1 * theta
+                    )  # Using in-place addition
 
         # Compute the second term
         # No need to loop through i and j. Instead, use broadcasting.
@@ -112,14 +118,14 @@ class DistributionalCounterfactualExplainer:
             self.X_prime
         ).unsqueeze(0)
         grads -= (
-            self.lambda_val * nu.unsqueeze(-1) * diff_model * self.X.grad.unsqueeze(1)
+            self.lambda_val * nu.unsqueeze(-1) * diff_model * model_grads.unsqueeze(1)
         ).sum(dim=1)
 
-        self.X_grads = grads
+        self.Qx_grads = grads
+        self.X.grad = self.Qx_grads
 
     def optimize(
         self,
-        initial_lr: Optional[float] = 0.1,
         max_iter: Optional[int] = 100,
         tol=1e-6,
     ):
@@ -128,10 +134,17 @@ class DistributionalCounterfactualExplainer:
             self.swd.distance(X_s=self.X, X_t=self.X_prime)
             self.wd.distance(y_s=self.y, y_t=self.y_prime)
 
-            self._update_X_grads(mu_list=self.swd.mu_list, nu=self.wd.nu)
-            self.X.data -= initial_lr * self.X_grads
-            self._update_Q(mu_list=self.swd.mu_list, nu=self.wd.nu)
+            # Reset the gradients
+            self.optimizer.zero_grad()
 
+            # Compute the gradients for self.X
+            self._update_X_grads(mu_list=self.swd.mu_list, nu=self.wd.nu)
+
+            # Perform an optimization step
+            self.optimizer.step()
+
+            # Update the Q value
+            self._update_Q(mu_list=self.swd.mu_list, nu=self.wd.nu)
             self.y = self.model(self.X)
 
             if self.Q < self.best_Q:

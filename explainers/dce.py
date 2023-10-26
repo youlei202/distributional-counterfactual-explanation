@@ -17,11 +17,14 @@ class DistributionalCounterfactualExplainer:
         """
         self.model = model
 
-        self.X = torch.from_numpy(X).float()
-        self.X_prime = self.X.clone()
+        self.X_prime = torch.from_numpy(X).float()
+        noise = torch.randn_like(self.X_prime) * 1.0
+        self.X = self.X_prime + noise
 
         self.X.requires_grad_(True).retain_grad()
         self.best_X = None
+
+        self.X_grads = None
 
         self.y = self.model(self.X)
         self.y_prime = self.y.clone()
@@ -40,23 +43,7 @@ class DistributionalCounterfactualExplainer:
 
         self.lambda_val = lambda_val
 
-    def _compute_gradient_for_X(self, mu_list, nu):
-        """
-        Compute the gradient of Q(X) with respect to each x_i in X.
-
-        Parameters:
-        - K: List of theta vectors.
-        - X: Tensor of shape (n, d) where n is the number of x_i vectors and d is the dimension of each vector.
-        - X_prime: Tensor of shape (n, d) representing the x'_j vectors.
-        - mu: Tensor of shape (len(K), n, n) representing mu values for each theta, i, and j.
-        - nu: Tensor of shape (n, n) representing nu values for each i and j.
-        - lambda_val: Scalar lambda value.
-        - b: Blackbox model (assumed to be a PyTorch model).
-
-        Returns:
-        - Gradient tensor of shape (n, d).
-        """
-
+    def _update_Q(self, mu_list, nu):
         n, m = self.X.shape[0], self.X_prime.shape[0]
 
         # Compute the first term
@@ -86,37 +73,64 @@ class DistributionalCounterfactualExplainer:
                 ).item()
         self.term2 = self.lambda_val * (self.epsilon - term)
 
-        # Compute the objective function Q
         self.Q = self.term1 + self.term2
 
-        # Compute gradient
-        self.Q.backward()
+    def _update_X_grads(self, mu_list, nu):
+        """
+        Compute the gradient of Q(X) with respect to each x_i in X.
 
-        return self.X.grad
+        Parameters:
+        - mu: Tensor of shape (len(K), n, n) representing mu values for each theta, i, and j.
+        - nu: Tensor of shape (n, n) representing nu values for each i and j.
+
+        Returns:
+        - Gradient tensor of shape (n, d).
+        """
+
+        n, m = self.X.shape[0], self.X_prime.shape[0]
+        thetas = [torch.from_numpy(theta).float() for theta in self.swd.thetas]
+        grads = torch.zeros_like(self.X)
+
+        # Obtain model gradients with a dummy backward pass
+        outputs = self.model(self.X)
+        loss = outputs.sum()
+
+        assert self.X.requires_grad, "self.X does not require gradients."
+        loss.backward()
+
+        # Compute the first term
+        for i in range(n):
+            for k, theta in enumerate(thetas):
+                mu = mu_list[k]
+                for j in range(m):
+                    diff1 = (torch.dot(theta, self.X[i]) - torch.dot(theta, self.X_prime[j])).item()
+                    grads[i].add_(mu[i][j].item() * diff1 * theta)  # Using in-place addition
+
+        # Compute the second term
+        # No need to loop through i and j. Instead, use broadcasting.
+        diff_model = self.model(self.X).unsqueeze(1) - self.model(
+            self.X_prime
+        ).unsqueeze(0)
+        grads -= (
+            self.lambda_val * nu.unsqueeze(-1) * diff_model * self.X.grad.unsqueeze(1)
+        ).sum(dim=1)
+
+        self.X_grads = grads
 
     def optimize(
         self,
         initial_lr: Optional[float] = 0.1,
         max_iter: Optional[int] = 100,
         tol=1e-6,
-        weight_decay=0.0,
     ):
-
-        optimizer = optim.Adam([self.X], lr=initial_lr, weight_decay=weight_decay)
-        scheduler = ReduceLROnPlateau(
-            optimizer, "min", patience=10, factor=0.5, verbose=True
-        )
-
         past_Qs = [float("inf")] * 5  # Store the last 5 Q values for moving average
         for i in range(max_iter):
-            optimizer.zero_grad()
             self.swd.distance(X_s=self.X, X_t=self.X_prime)
             self.wd.distance(y_s=self.y, y_t=self.y_prime)
 
-            self._compute_gradient_for_X(mu_list=self.swd.mu_list, nu=self.wd.nu)
-            optimizer.step()
-
-            # scheduler.step(self.Q)
+            self._update_X_grads(mu_list=self.swd.mu_list, nu=self.wd.nu)
+            self.X.data -= initial_lr * self.X_grads
+            self._update_Q(mu_list=self.swd.mu_list, nu=self.wd.nu)
 
             self.y = self.model(self.X)
 

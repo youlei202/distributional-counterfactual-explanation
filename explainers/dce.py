@@ -88,7 +88,6 @@ class DistributionalCounterfactualExplainer:
         thetas = [
             torch.from_numpy(theta).float().to(self.device) for theta in self.swd.thetas
         ]
-        grads = torch.zeros_like(self.X).to(self.device)
 
         # Obtain model gradients with a dummy backward pass
         outputs = self.model(self.X)
@@ -100,29 +99,28 @@ class DistributionalCounterfactualExplainer:
         model_grads = self.X.grad.clone()  # Store the gradients
 
         # Compute the first term
-        for i in range(n):
-            for k, theta in enumerate(thetas):
-                mu = mu_list[k]
-                for j in range(m):
-                    diff1 = (
-                        torch.dot(theta, self.X[i]) - torch.dot(theta, self.X_prime[j])
-                    ).item()
-                    grads[i].add_(
-                        mu[i][j].item() * diff1 * theta
-                    )  # Using in-place addition
+        X_proj = torch.stack([torch.matmul(self.X, theta) for theta in thetas], dim=1)  # [n, num_thetas]
+        X_prime_proj = torch.stack([torch.matmul(self.X_prime, theta) for theta in thetas], dim=1)  # [m, num_thetas]
+        
+        # Use broadcasting to compute differences for all i, j
+        differences = X_proj[:, :, None] - X_prime_proj.T[None, :, :]  # Shape [n, num_thetas, m]
+
+        # Multiply by mu and sum over j
+        gradient_term1_matrix = torch.stack([mu.to(self.device) * differences[:, k, :] for k, mu in enumerate(mu_list)], dim=1)  # [n, num_thetas, m]
+        gradient_term1 = torch.sum(gradient_term1_matrix, dim=2)  # Shape [n, num_thetas]
+
+        # Weight by theta to get the gradient
+        gradient_term1 = torch.matmul(gradient_term1, torch.stack(thetas))  # Shape [n, d]
 
         # Compute the second term
         # No need to loop through i and j. Instead, use broadcasting.
-        diff_model = self.model(self.X).unsqueeze(1) - self.model(
-            self.X_prime
-        ).unsqueeze(0)
+        diff_model = self.model(self.X).unsqueeze(1) - self.model(self.X_prime).unsqueeze(0)
         nu = nu.to(self.device)
-        grads -= (
-            self.lambda_val * nu.unsqueeze(-1) * diff_model * model_grads.unsqueeze(1)
-        ).sum(dim=1)
+        gradient_term2 = (self.lambda_val * nu.unsqueeze(-1) * diff_model * model_grads.unsqueeze(1)).sum(dim=1)
 
-        self.Qx_grads = grads
+        self.Qx_grads = gradient_term1 + gradient_term2
         self.X.grad = self.Qx_grads
+
 
     def optimize(
         self,

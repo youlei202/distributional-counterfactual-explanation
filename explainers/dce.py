@@ -6,6 +6,10 @@ import numpy as np
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class DistributionalCounterfactualExplainer:
     def __init__(
@@ -150,9 +154,9 @@ class DistributionalCounterfactualExplainer:
             past_Qs.append(self.Q.item())
             avg_Q_change = (past_Qs[-1] - past_Qs[0]) / 5
             if abs(avg_Q_change) < tol:
-                print(f"Converged at iteration {i+1}")
+                logging.info(f"Converged at iteration {i+1}")
                 break
 
-            print(
+            logging.info(
                 f"Iter {i+1}: Q = {self.Q}, term1 = {self.term1}, term2 = {self.term2}"
             )

@@ -12,6 +12,11 @@ from models.mlp import BlackBoxModel
 import pickle
 import os
 from explainers.dce import DistributionalCounterfactualExplainer
+import logging
+
+# Set up logging configurations
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 data_path = "data/hotel_booking/"
 sample_num = 10
@@ -22,7 +27,7 @@ def main():
     df_ = pd.read_csv(os.path.join(data_path, "hotel_bookings.csv"))
     df = df_.copy()
 
-    print('Dataset loaded.')
+    logging.info('Dataset loaded.')
 
     # Define target column
     target_name = "is_canceled"
@@ -47,7 +52,7 @@ def main():
             median_val = df[column].median()
             df[column].fillna(median_val, inplace=True)
 
-    print('Data preprocessing done.')
+    logging.info('Data preprocessing done.')
 
     # Define features for model training
     features = ["lead_time", "booking_changes"]
@@ -101,7 +106,7 @@ def main():
     y_target = torch.zeros_like(y)
 
     # Counterfactual explanation
-    print('Counterfactual explanation optimization started.')
+    logging.info('Counterfactual explanation optimization started.')
     explainer = DistributionalCounterfactualExplainer(
         model=model, X=X, y_target=y_target, lr=1e-1, epsilon=0.5, lambda_val=100
     )
@@ -128,8 +133,10 @@ def main():
     counterfactual_X.to_csv(os.path.join(data_path, "counterfactual.csv"), index=False)
     with open(os.path.join(data_path, "explainer.pkl"), "wb") as file:
         pickle.dump(explainer, file)
-    print('Files dumped.')
+    logging.info('Files dumped.')
 
 
 if __name__ == "__main__":
+    logger = logging.getLogger(__name__)
+    logger.info("Hotel booking analysis started")
     main()

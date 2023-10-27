@@ -17,7 +17,7 @@ class WassersteinDivergence:
             y_s.reshape(y_s.shape[0], 1),
             y_t.reshape(y_t.shape[0], 1),
             metric="sqeuclidean",
-        )
+        ).to('cpu')
 
         self.nu = ot.emd(proj_y_s_dist_mass, proj_y_t_dist_mass, M_y)
         dist = torch.sum(self.nu * M_y)
@@ -61,8 +61,8 @@ class SlicedWassersteinDivergence:
             
             # Project data onto the vector theta
             theta = torch.from_numpy(theta).float()
-            proj_X_s = X_s @ theta
-            proj_X_t = X_t @ theta
+            proj_X_s = X_s.to('cpu') @ theta
+            proj_X_t = X_t.to('cpu') @ theta
 
             M_x = ot.dist(
                 proj_X_s.reshape(proj_X_s.shape[0], 1),

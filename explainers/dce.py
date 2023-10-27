@@ -5,10 +5,9 @@ from typing import Optional
 import numpy as np
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from logger_config import setup_logger
 
-import logging
-
-logger = logging.getLogger(__name__)
+logger = setup_logger()
 
 
 class DistributionalCounterfactualExplainer:
@@ -42,7 +41,9 @@ class DistributionalCounterfactualExplainer:
         self.best_Q = self.Q
 
         self.epsilon = torch.tensor(epsilon, dtype=torch.float, device=self.device)
-        self.lambda_val = torch.tensor(lambda_val, dtype=torch.float, device=self.device)
+        self.lambda_val = torch.tensor(
+            lambda_val, dtype=torch.float, device=self.device
+        )
 
     def _update_Q(self, mu_list, nu):
         n, m = self.X.shape[0], self.X_prime.shape[0]
@@ -66,7 +67,9 @@ class DistributionalCounterfactualExplainer:
                         )
                         ** 2
                     )
-        self.term1 /= torch.tensor(self.swd.n_proj, dtype=torch.float, device=self.device)
+        self.term1 /= torch.tensor(
+            self.swd.n_proj, dtype=torch.float, device=self.device
+        )
 
         # Compute the second term
         term = torch.tensor(0.0, dtype=torch.float)

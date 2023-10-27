@@ -12,11 +12,10 @@ from models.mlp import BlackBoxModel
 import pickle
 import os
 from explainers.dce import DistributionalCounterfactualExplainer
-import logging
+from logger_config import setup_logger
 
-# Set up logging configurations
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+
+logger = setup_logger()
 
 data_path = "data/hotel_booking/"
 sample_num = 10
@@ -27,7 +26,7 @@ def main():
     df_ = pd.read_csv(os.path.join(data_path, "hotel_bookings.csv"))
     df = df_.copy()
 
-    logging.info('Dataset loaded.')
+    logging.info("Dataset loaded.")
 
     # Define target column
     target_name = "is_canceled"
@@ -52,7 +51,7 @@ def main():
             median_val = df[column].median()
             df[column].fillna(median_val, inplace=True)
 
-    logging.info('Data preprocessing done.')
+    logging.info("Data preprocessing done.")
 
     # Define features for model training
     features = ["lead_time", "booking_changes"]
@@ -61,9 +60,7 @@ def main():
     df_y = target
 
     # Split data into train and test sets
-    X_train, X_test, y_train, y_test = train_test_split(
-        df_X, df_y, test_size=0.2
-    )
+    X_train, X_test, y_train, y_test = train_test_split(df_X, df_y, test_size=0.2)
 
     # Normalize training and test datasets
     std = X_train.std()
@@ -106,7 +103,7 @@ def main():
     y_target = torch.zeros_like(y)
 
     # Counterfactual explanation
-    logging.info('Counterfactual explanation optimization started.')
+    logging.info("Counterfactual explanation optimization started.")
     explainer = DistributionalCounterfactualExplainer(
         model=model, X=X, y_target=y_target, lr=1e-1, epsilon=0.5, lambda_val=100
     )
@@ -114,15 +111,17 @@ def main():
 
     factual_X = df[df_X.columns].loc[indice].copy()
     counterfactual_X = pd.DataFrame(
-        explainer.best_X.detach().to('cpu').numpy() * std[df_X.columns].values
+        explainer.best_X.detach().to("cpu").numpy() * std[df_X.columns].values
         + mean[df_X.columns].values,
         columns=df_X.columns,
     )
     factual_y = pd.DataFrame(
-        y.detach().to('cpu').numpy(), columns=[target_name], index=factual_X.index
+        y.detach().to("cpu").numpy(), columns=[target_name], index=factual_X.index
     )
     counterfactual_y = pd.DataFrame(
-        explainer.best_y.detach().to('cpu').numpy(), columns=[target_name], index=factual_X.index
+        explainer.best_y.detach().to("cpu").numpy(),
+        columns=[target_name],
+        index=factual_X.index,
     )
 
     counterfactual_X.index = factual_X.index
@@ -133,7 +132,7 @@ def main():
     counterfactual_X.to_csv(os.path.join(data_path, "counterfactual.csv"), index=False)
     with open(os.path.join(data_path, "explainer.pkl"), "wb") as file:
         pickle.dump(explainer, file)
-    logging.info('Files dumped.')
+    logging.info("Files dumped.")
 
 
 if __name__ == "__main__":

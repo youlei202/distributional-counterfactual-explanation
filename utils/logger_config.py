@@ -8,7 +8,8 @@ def setup_logger():
     if not logger.handlers:  # Check if handlers are already added
         logger.setLevel(logging.INFO)
 
-        stdout_handler = logging.StreamHandler(sys.stdout)
+        unbuffered_stdout = open(sys.stdout.fileno(), 'w', 1, closefd=False)  # setting line buffering
+        stdout_handler = logging.StreamHandler(unbuffered_stdout)
         stdout_handler.setLevel(logging.INFO)
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         stdout_handler.setFormatter(formatter)
@@ -16,4 +17,5 @@ def setup_logger():
         logger.addHandler(stdout_handler)
 
     return logger
+
 

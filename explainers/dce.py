@@ -157,9 +157,9 @@ class DistributionalCounterfactualExplainer:
             past_Qs.append(self.Q.item())
             avg_Q_change = (past_Qs[-1] - past_Qs[0]) / 5
             if abs(avg_Q_change) < tol:
-                logging.info(f"Converged at iteration {i+1}")
+                logger.info(f"Converged at iteration {i+1}")
                 break
 
-            logging.info(
+            logger.info(
                 f"Iter {i+1}: Q = {self.Q}, term1 = {self.term1}, term2 = {self.term2}"
             )

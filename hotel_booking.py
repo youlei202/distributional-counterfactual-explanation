@@ -3,24 +3,26 @@
 # Import necessary libraries
 import pandas as pd
 import numpy as np
-import seaborn as sns
-import torch.optim as optim
 from sklearn.model_selection import train_test_split
 import torch
 import torch.nn as nn
+import torch.optim as optim
 from sklearn.preprocessing import LabelEncoder
 from models.mlp import BlackBoxModel
 import pickle
 import os
+from explainers.dce import DistributionalCounterfactualExplainer
 
 data_path = "data/hotel_booking/"
-sample_num = 5
+sample_num = 10
 
 
 def main():
     # Load dataset and create a copy for manipulation
     df_ = pd.read_csv(os.path.join(data_path, "hotel_bookings.csv"))
     df = df_.copy()
+
+    print('Dataset loaded.')
 
     # Define target column
     target_name = "is_canceled"
@@ -44,6 +46,8 @@ def main():
         if df[column].isna().any():
             median_val = df[column].median()
             df[column].fillna(median_val, inplace=True)
+
+    print('Data preprocessing done.')
 
     # Define features for model training
     features = ["lead_time", "booking_changes"]
@@ -100,12 +104,11 @@ def main():
     y_target = torch.zeros_like(y)
 
     # Counterfactual explanation
-    from explainers.dce import DistributionalCounterfactualExplainer
-
+    print('Counterfactual explanation optimization started.')
     explainer = DistributionalCounterfactualExplainer(
         model=model, X=X, y_target=y_target, lr=1e-1, epsilon=0.5, lambda_val=100
     )
-    explainer.optimize(max_iter=100)
+    explainer.optimize(max_iter=1000)
 
     factual_X = df[df_X.columns].loc[indice].copy()
     counterfactual_X = pd.DataFrame(
@@ -128,6 +131,7 @@ def main():
     counterfactual_X.to_csv(os.path.join(data_path, "counterfactual.csv"), index=False)
     with open(os.path.join(data_path, "explainer.pkl"), "wb") as file:
         pickle.dump(explainer, file)
+    print('Files dumped.')
 
 
 if __name__ == "__main__":

@@ -102,17 +102,17 @@ class DistributionalCounterfactualExplainer:
         loss.backward()
         model_grads = self.X.grad.clone()  # Store the gradients
 
-        # # Compute the first term
-        # for i in range(n):
-        #     for k, theta in enumerate(thetas):
-        #         mu = mu_list[k]
-        #         for j in range(m):
-        #             diff1 = (
-        #                 torch.dot(theta, self.X[i]) - torch.dot(theta, self.X_prime[j])
-        #             ).item()
-        #             grads[i].add_(
-        #                 mu[i][j].item() * diff1 * theta
-        #             )  # Using in-place addition
+        # Compute the first term
+        for i in range(n):
+            for k, theta in enumerate(thetas):
+                mu = mu_list[k]
+                for j in range(m):
+                    diff1 = (
+                        torch.dot(theta, self.X[i]) - torch.dot(theta, self.X_prime[j])
+                    ).item()
+                    grads[i].add_(
+                        mu[i][j].item() * diff1 * theta
+                    )  # Using in-place addition
 
         # Compute the second term
         # No need to loop through i and j. Instead, use broadcasting.

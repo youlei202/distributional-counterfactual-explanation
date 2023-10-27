@@ -55,9 +55,6 @@ def main():
     df_X = df[features].copy()
     df_y = target
 
-    seed = 42
-    np.random.seed(seed)  # Set seed for reproducibility
-
     # Split data into train and test sets
     X_train, X_test, y_train, y_test = train_test_split(
         df_X, df_y, test_size=0.2, random_state=seed
@@ -108,19 +105,19 @@ def main():
     explainer = DistributionalCounterfactualExplainer(
         model=model, X=X, y_target=y_target, lr=1e-1, epsilon=0.5, lambda_val=100
     )
-    explainer.optimize(max_iter=1000)
+    explainer.optimize(max_iter=100)
 
     factual_X = df[df_X.columns].loc[indice].copy()
     counterfactual_X = pd.DataFrame(
-        explainer.best_X.detach().numpy() * std[df_X.columns].values
+        explainer.best_X.detach().to('cpu').numpy() * std[df_X.columns].values
         + mean[df_X.columns].values,
         columns=df_X.columns,
     )
     factual_y = pd.DataFrame(
-        y.detach().numpy(), columns=[target_name], index=factual_X.index
+        y.detach().to('cpu').numpy(), columns=[target_name], index=factual_X.index
     )
     counterfactual_y = pd.DataFrame(
-        explainer.best_y.detach().numpy(), columns=[target_name], index=factual_X.index
+        explainer.best_y.detach().to('cpu').numpy(), columns=[target_name], index=factual_X.index
     )
 
     counterfactual_X.index = factual_X.index

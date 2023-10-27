@@ -31,26 +31,27 @@ class DistributionalCounterfactualExplainer:
         self.y_prime = y_target.clone().to(self.device)
         self.best_y = None
 
-        # Assuming SlicedWassersteinDivergence and WassersteinDivergence are GPU-compatible
-        self.swd = SlicedWassersteinDivergence(X.shape[1], n_proj=n_proj).to(
-            self.device
-        )
-        self.wd = WassersteinDivergence().to(self.device)
+        self.swd = SlicedWassersteinDivergence(X.shape[1], n_proj=n_proj)
+        self.wd = WassersteinDivergence()
 
         self.Q = torch.tensor(torch.inf, dtype=torch.float, device=self.device)
         self.best_Q = self.Q
 
-        self.epsilon = epsilon
-        self.lambda_val = lambda_val
+        self.epsilon = torch.tensor(epsilon, dtype=torch.float, device=self.device)
+        self.lambda_val = torch.tensor(lambda_val, dtype=torch.float, device=self.device)
 
     def _update_Q(self, mu_list, nu):
         n, m = self.X.shape[0], self.X_prime.shape[0]
 
+        thetas = [
+            torch.from_numpy(theta).float().to(self.device) for theta in self.swd.thetas
+        ]
+
         # Compute the first term
-        self.term1 = torch.tensor(0.0, dtype=torch.float)
-        for k, theta in enumerate(self.swd.thetas):
+        self.term1 = torch.tensor(0.0, dtype=torch.float).to(self.device)
+        for k, theta in enumerate(thetas):
             mu = mu_list[k]
-            theta = torch.from_numpy(theta).float()
+            mu = mu.to(self.device)
             for i in range(n):
                 for j in range(m):
                     self.term1 += (
@@ -61,7 +62,7 @@ class DistributionalCounterfactualExplainer:
                         )
                         ** 2
                     )
-        self.term1 /= self.swd.n_proj
+        self.term1 /= torch.tensor(self.swd.n_proj, dtype=torch.float, device=self.device)
 
         # Compute the second term
         term = torch.tensor(0.0, dtype=torch.float)
@@ -108,6 +109,7 @@ class DistributionalCounterfactualExplainer:
         diff_model = self.model(self.X).unsqueeze(1) - self.model(
             self.X_prime
         ).unsqueeze(0)
+        nu = nu.to(self.device)
         grads -= (
             self.lambda_val * nu.unsqueeze(-1) * diff_model * model_grads.unsqueeze(1)
         ).sum(dim=1)

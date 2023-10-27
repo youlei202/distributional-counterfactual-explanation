@@ -5,13 +5,13 @@
 #!/bin/bash
 ### General options
 ### –- specify queue --
-#BSUB -q hpc
+#BSUB -q gpuv100
 ### -- set the job Name --
 #BSUB -J hotel_booking
 ### -- ask for number of cores (default: 1) --
-#BSUB -n 1
+#BSUB -n 4
 ### -- Select the resources: 1 gpu in exclusive process mode --
-###BSUB -gpu "num=1:mode=exclusive_process"
+#BSUB -gpu "num=1:mode=exclusive_process"
 ### -- set walltime limit: hh:mm --  maximum 24 hours for GPU-queues right now
 #BSUB -W 2:00
 # request system-memory
@@ -34,5 +34,6 @@
 module load pandas/1.4.1-python-3.9.11 
 module load scipy/1.7.3-python-3.9.11
 module load python3/3.9.11
+module load cuda/11.6
 
 python3 hotel_booking.py

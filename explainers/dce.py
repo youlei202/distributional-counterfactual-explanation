@@ -8,13 +8,15 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 
 class DistributionalCounterfactualExplainer:
-    def __init__(self, model, X, epsilon=0.1, lr=0.1, lambda_val=0.5, n_proj=50):
+    def __init__(
+        self, model, X, y_target, epsilon=0.1, lr=0.1, lambda_val=0.5, n_proj=50
+    ):
         # ... (rest of the code)
         # Initialize the Adam optimizer
         self.model = model
 
         self.X_prime = torch.from_numpy(X).float()
-        noise = torch.randn_like(self.X_prime) * 1.0
+        noise = torch.randn_like(self.X_prime) * 0.01
         self.X = self.X_prime + noise
 
         self.X.requires_grad_(True).retain_grad()
@@ -27,7 +29,7 @@ class DistributionalCounterfactualExplainer:
         )  # You can set your preferred learning rate.
 
         self.y = self.model(self.X)
-        self.y_prime = self.y.clone()
+        self.y_prime = y_target.clone()
 
         self.best_y = None
 
@@ -100,17 +102,17 @@ class DistributionalCounterfactualExplainer:
         loss.backward()
         model_grads = self.X.grad.clone()  # Store the gradients
 
-        # Compute the first term
-        for i in range(n):
-            for k, theta in enumerate(thetas):
-                mu = mu_list[k]
-                for j in range(m):
-                    diff1 = (
-                        torch.dot(theta, self.X[i]) - torch.dot(theta, self.X_prime[j])
-                    ).item()
-                    grads[i].add_(
-                        mu[i][j].item() * diff1 * theta
-                    )  # Using in-place addition
+        # # Compute the first term
+        # for i in range(n):
+        #     for k, theta in enumerate(thetas):
+        #         mu = mu_list[k]
+        #         for j in range(m):
+        #             diff1 = (
+        #                 torch.dot(theta, self.X[i]) - torch.dot(theta, self.X_prime[j])
+        #             ).item()
+        #             grads[i].add_(
+        #                 mu[i][j].item() * diff1 * theta
+        #             )  # Using in-place addition
 
         # Compute the second term
         # No need to loop through i and j. Instead, use broadcasting.
@@ -143,7 +145,7 @@ class DistributionalCounterfactualExplainer:
             # Perform an optimization step
             self.optimizer.step()
 
-            # Update the Q value
+            # Update the Q value and y by the newly optimized X
             self._update_Q(mu_list=self.swd.mu_list, nu=self.wd.nu)
             self.y = self.model(self.X)
 

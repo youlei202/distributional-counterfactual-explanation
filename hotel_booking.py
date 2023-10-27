@@ -26,7 +26,7 @@ def main():
     df_ = pd.read_csv(os.path.join(data_path, "hotel_bookings.csv"))
     df = df_.copy()
 
-    logging.info("Dataset loaded.")
+    logger.info("Dataset loaded.")
 
     # Define target column
     target_name = "is_canceled"
@@ -51,7 +51,7 @@ def main():
             median_val = df[column].median()
             df[column].fillna(median_val, inplace=True)
 
-    logging.info("Data preprocessing done.")
+    logger.info("Data preprocessing done.")
 
     # Define features for model training
     features = ["lead_time", "booking_changes"]
@@ -103,11 +103,11 @@ def main():
     y_target = torch.zeros_like(y)
 
     # Counterfactual explanation
-    logging.info("Counterfactual explanation optimization started.")
+    logger.info("Counterfactual explanation optimization started.")
     explainer = DistributionalCounterfactualExplainer(
-        model=model, X=X, y_target=y_target, lr=1e-1, epsilon=0.5, lambda_val=100
+        model=model, X=X, y_target=y_target, lr=0.025, epsilon=1, lambda_val=100
     )
-    explainer.optimize(max_iter=100)
+    explainer.optimize(max_iter=2000)
 
     factual_X = df[df_X.columns].loc[indice].copy()
     counterfactual_X = pd.DataFrame(
@@ -132,7 +132,7 @@ def main():
     counterfactual_X.to_csv(os.path.join(data_path, "counterfactual.csv"), index=False)
     with open(os.path.join(data_path, "explainer.pkl"), "wb") as file:
         pickle.dump(explainer, file)
-    logging.info("Files dumped.")
+    logger.info("Files dumped.")
 
 
 if __name__ == "__main__":

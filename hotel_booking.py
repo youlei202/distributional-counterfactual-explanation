@@ -3,24 +3,30 @@
 # Import necessary libraries
 import pandas as pd
 import numpy as np
-import seaborn as sns
-import torch.optim as optim
 from sklearn.model_selection import train_test_split
 import torch
 import torch.nn as nn
+import torch.optim as optim
 from sklearn.preprocessing import LabelEncoder
 from models.mlp import BlackBoxModel
 import pickle
 import os
+from explainers.dce import DistributionalCounterfactualExplainer
+from utils.logger_config import setup_logger
+
+
+logger = setup_logger()
 
 data_path = "data/hotel_booking/"
-sample_num = 5
+sample_num = 10
 
 
 def main():
     # Load dataset and create a copy for manipulation
     df_ = pd.read_csv(os.path.join(data_path, "hotel_bookings.csv"))
     df = df_.copy()
+
+    logger.info("Dataset loaded.")
 
     # Define target column
     target_name = "is_canceled"
@@ -45,19 +51,16 @@ def main():
             median_val = df[column].median()
             df[column].fillna(median_val, inplace=True)
 
+    logger.info("Data preprocessing done.")
+
     # Define features for model training
     features = ["lead_time", "booking_changes"]
 
     df_X = df[features].copy()
     df_y = target
 
-    seed = 42
-    np.random.seed(seed)  # Set seed for reproducibility
-
     # Split data into train and test sets
-    X_train, X_test, y_train, y_test = train_test_split(
-        df_X, df_y, test_size=0.2, random_state=seed
-    )
+    X_train, X_test, y_train, y_test = train_test_split(df_X, df_y, test_size=0.2)
 
     # Normalize training and test datasets
     std = X_train.std()
@@ -100,24 +103,25 @@ def main():
     y_target = torch.zeros_like(y)
 
     # Counterfactual explanation
-    from explainers.dce import DistributionalCounterfactualExplainer
-
+    logger.info("Counterfactual explanation optimization started.")
     explainer = DistributionalCounterfactualExplainer(
-        model=model, X=X, y_target=y_target, lr=1e-1, epsilon=0.5, lambda_val=100
+        model=model, X=X, y_target=y_target, lr=0.025, epsilon=1, lambda_val=100
     )
-    explainer.optimize(max_iter=100)
+    explainer.optimize(max_iter=2000)
 
     factual_X = df[df_X.columns].loc[indice].copy()
     counterfactual_X = pd.DataFrame(
-        explainer.best_X.detach().numpy() * std[df_X.columns].values
+        explainer.best_X.detach().to("cpu").numpy() * std[df_X.columns].values
         + mean[df_X.columns].values,
         columns=df_X.columns,
     )
     factual_y = pd.DataFrame(
-        y.detach().numpy(), columns=[target_name], index=factual_X.index
+        y.detach().to("cpu").numpy(), columns=[target_name], index=factual_X.index
     )
     counterfactual_y = pd.DataFrame(
-        explainer.best_y.detach().numpy(), columns=[target_name], index=factual_X.index
+        explainer.best_y.detach().to("cpu").numpy(),
+        columns=[target_name],
+        index=factual_X.index,
     )
 
     counterfactual_X.index = factual_X.index
@@ -128,7 +132,9 @@ def main():
     counterfactual_X.to_csv(os.path.join(data_path, "counterfactual.csv"), index=False)
     with open(os.path.join(data_path, "explainer.pkl"), "wb") as file:
         pickle.dump(explainer, file)
+    logger.info("Files dumped.")
 
 
 if __name__ == "__main__":
+    logger.info("Hotel booking analysis started")
     main()

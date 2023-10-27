@@ -5,7 +5,7 @@ from typing import Optional
 import numpy as np
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from logger_config import setup_logger
+from utils.logger_config import setup_logger
 
 logger = setup_logger()
 

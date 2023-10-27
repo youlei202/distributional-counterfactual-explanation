@@ -12,7 +12,7 @@ from models.mlp import BlackBoxModel
 import pickle
 import os
 from explainers.dce import DistributionalCounterfactualExplainer
-from logger_config import setup_logger
+from utils.logger_config import setup_logger
 
 
 logger = setup_logger()

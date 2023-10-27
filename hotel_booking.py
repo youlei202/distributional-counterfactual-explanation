@@ -105,9 +105,9 @@ def main():
     # Counterfactual explanation
     logger.info("Counterfactual explanation optimization started.")
     explainer = DistributionalCounterfactualExplainer(
-        model=model, X=X, y_target=y_target, lr=1e-1, epsilon=0.5, lambda_val=100
+        model=model, X=X, y_target=y_target, lr=0.025, epsilon=1, lambda_val=100
     )
-    explainer.optimize(max_iter=100)
+    explainer.optimize(max_iter=2000)
 
     factual_X = df[df_X.columns].loc[indice].copy()
     counterfactual_X = pd.DataFrame(

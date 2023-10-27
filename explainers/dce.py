@@ -127,7 +127,6 @@ class DistributionalCounterfactualExplainer:
         max_iter: Optional[int] = 100,
         tol=1e-6,
     ):
-        past_Qs = [float("inf")] * 5  # Store the last 5 Q values for moving average
         for i in range(max_iter):
             self.swd.distance(X_s=self.X, X_t=self.X_prime)
             self.wd.distance(y_s=self.y, y_t=self.y_prime)
@@ -140,24 +139,18 @@ class DistributionalCounterfactualExplainer:
 
             # Perform an optimization step
             self.optimizer.step()
+            logger.info(f"Iteration {i+1} done.")
 
-            # Update the Q value and y by the newly optimized X
-            self._update_Q(mu_list=self.swd.mu_list, nu=self.wd.nu)
-            self.y = self.model(self.X)
 
-            if self.Q < self.best_Q:
-                self.best_Q = self.Q.clone().detach()
-                self.best_X = self.X.clone().detach()
-                self.best_y = self.y.clone().detach()
+        # Update the Q value and y by the newly optimized X
+        self._update_Q(mu_list=self.swd.mu_list, nu=self.wd.nu)
+        self.y = self.model(self.X)
 
-            # Check for convergence using moving average of past Q changes
-            past_Qs.pop(0)
-            past_Qs.append(self.Q.item())
-            avg_Q_change = (past_Qs[-1] - past_Qs[0]) / 5
-            if abs(avg_Q_change) < tol:
-                logger.info(f"Converged at iteration {i+1}")
-                break
+        self.best_Q = self.Q.clone().detach()
+        self.best_X = self.X.clone().detach()
+        self.best_y = self.y.clone().detach()
 
-            logger.info(
-                f"Iter {i+1}: Q = {self.Q}, term1 = {self.term1}, term2 = {self.term2}"
-            )
+        logger.info(
+            f"After optimization: Q = {self.Q}, term1 = {self.term1}, term2 = {self.term2}"
+        )
+

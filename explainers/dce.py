@@ -11,38 +11,36 @@ class DistributionalCounterfactualExplainer:
     def __init__(
         self, model, X, y_target, epsilon=0.1, lr=0.1, lambda_val=0.5, n_proj=50
     ):
-        # ... (rest of the code)
-        # Initialize the Adam optimizer
-        self.model = model
+        # Set the device (GPU if available, otherwise CPU)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        self.X_prime = torch.from_numpy(X).float()
+        # Move model to the appropriate device
+        self.model = model.to(self.device)
+
+        # Transfer data to the device
+        self.X_prime = torch.from_numpy(X).float().to(self.device)
         noise = torch.randn_like(self.X_prime) * 0.01
-        self.X = self.X_prime + noise
+        self.X = (self.X_prime + noise).to(self.device)
 
         self.X.requires_grad_(True).retain_grad()
         self.best_X = None
-
         self.Qx_grads = None
-
-        self.optimizer = optim.Adam(
-            [self.X], lr=lr
-        )  # You can set your preferred learning rate.
+        self.optimizer = optim.Adam([self.X], lr=lr)
 
         self.y = self.model(self.X)
-        self.y_prime = y_target.clone()
-
+        self.y_prime = y_target.clone().to(self.device)
         self.best_y = None
 
-        self.swd = SlicedWassersteinDivergence(X.shape[1], n_proj=n_proj)
-        self.wd = WassersteinDivergence()
+        # Assuming SlicedWassersteinDivergence and WassersteinDivergence are GPU-compatible
+        self.swd = SlicedWassersteinDivergence(X.shape[1], n_proj=n_proj).to(
+            self.device
+        )
+        self.wd = WassersteinDivergence().to(self.device)
 
-        # Introduce an optimizer for self.X
-
-        self.Q = torch.tensor(torch.inf, dtype=torch.float)
+        self.Q = torch.tensor(torch.inf, dtype=torch.float, device=self.device)
         self.best_Q = self.Q
 
         self.epsilon = epsilon
-
         self.lambda_val = lambda_val
 
     def _update_Q(self, mu_list, nu):
@@ -78,20 +76,11 @@ class DistributionalCounterfactualExplainer:
         self.Q = self.term1 + self.term2
 
     def _update_X_grads(self, mu_list, nu):
-        """
-        Compute the gradient of Q(X) with respect to each x_i in X.
-
-        Parameters:
-        - mu: Tensor of shape (len(K), n, n) representing mu values for each theta, i, and j.
-        - nu: Tensor of shape (n, n) representing nu values for each i and j.
-
-        Returns:
-        - Gradient tensor of shape (n, d).
-        """
-
         n, m = self.X.shape[0], self.X_prime.shape[0]
-        thetas = [torch.from_numpy(theta).float() for theta in self.swd.thetas]
-        grads = torch.zeros_like(self.X)
+        thetas = [
+            torch.from_numpy(theta).float().to(self.device) for theta in self.swd.thetas
+        ]
+        grads = torch.zeros_like(self.X).to(self.device)
 
         # Obtain model gradients with a dummy backward pass
         outputs = self.model(self.X)

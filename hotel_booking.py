@@ -17,13 +17,14 @@ from utils.logger_config import setup_logger
 
 logger = setup_logger()
 
-data_path = "data/hotel_booking/"
+read_data_path = "data/"
+dump_data_path = "data/hotel_booking/"
 sample_num = 10
 
 
 def main():
     # Load dataset and create a copy for manipulation
-    df_ = pd.read_csv(os.path.join(data_path, "hotel_bookings.csv"))
+    df_ = pd.read_csv(os.path.join(read_data_path, "hotel_bookings.csv"))
     df = df_.copy()
 
     logger.info("Dataset loaded.")
@@ -128,9 +129,11 @@ def main():
     counterfactual_X[target_name] = counterfactual_y
     factual_X[target_name] = factual_y
 
-    factual_X.to_csv(os.path.join(data_path, "factual.csv"), index=False)
-    counterfactual_X.to_csv(os.path.join(data_path, "counterfactual.csv"), index=False)
-    with open(os.path.join(data_path, "explainer.pkl"), "wb") as file:
+    factual_X.to_csv(os.path.join(dump_data_path, "factual.csv"), index=False)
+    counterfactual_X.to_csv(
+        os.path.join(dump_data_path, "counterfactual.csv"), index=False
+    )
+    with open(os.path.join(dump_data_path, "explainer.pkl"), "wb") as file:
         pickle.dump(explainer, file)
     logger.info("Files dumped.")
 

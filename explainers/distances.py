@@ -20,11 +20,11 @@ class WassersteinDivergence:
             metric="sqeuclidean",
         ).to('cpu')
 
-        # self.nu = ot.emd(proj_y_s_dist_mass, proj_y_t_dist_mass, M_y)
+        self.nu = ot.emd(proj_y_s_dist_mass, proj_y_t_dist_mass, M_y)
         # self.nu = ot.bregman.sinkhorn(
         #     proj_y_s_dist_mass, proj_y_t_dist_mass, M_y, reg=self.reg
         # )
-        self.nu = torch.diag(torch.ones(len(y_s)))
+        # self.nu = torch.diag(torch.ones(len(y_s)))
         dist = torch.sum(self.nu * M_y)
 
         return dist

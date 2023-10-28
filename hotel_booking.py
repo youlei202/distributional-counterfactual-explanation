@@ -105,7 +105,7 @@ def main():
     # Counterfactual explanation
     logger.info("Counterfactual explanation optimization started.")
     explainer = DistributionalCounterfactualExplainer(
-        model=model, X=X, y_target=y_target, lr=0.2, epsilon=1e-6, lambda_val=10
+        model=model, X=X, y_target=y_target, lr=0.1, epsilon=1e-6, lambda_val=100
     )
     explainer.optimize(max_iter=500)
 

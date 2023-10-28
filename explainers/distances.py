@@ -5,8 +5,9 @@ import torch
 
 
 class WassersteinDivergence:
-    def __init__(self):
+    def __init__(self, reg=1):
         self.nu = None
+        self.reg = reg
 
     def distance(self, y_s: np.array, y_t: np.array):
 
@@ -19,21 +20,26 @@ class WassersteinDivergence:
             metric="sqeuclidean",
         ).to('cpu')
 
-        self.nu = ot.emd(proj_y_s_dist_mass, proj_y_t_dist_mass, M_y)
+        # self.nu = ot.emd(proj_y_s_dist_mass, proj_y_t_dist_mass, M_y)
+        # self.nu = ot.bregman.sinkhorn(
+        #     proj_y_s_dist_mass, proj_y_t_dist_mass, M_y, reg=self.reg
+        # )
+        self.nu = torch.diag(torch.ones(len(y_s)))
         dist = torch.sum(self.nu * M_y)
 
         return dist
 
 
 class SlicedWassersteinDivergence:
-    def __init__(self, dim: int, n_proj: int):
+    def __init__(self, dim: int, n_proj: int, reg=1):
         self.dim = dim
         self.n_proj = n_proj
         self.thetas = np.random.randn(n_proj, dim)
         self.thetas /= np.linalg.norm(self.thetas, axis=1)[:, None]
 
+        self.reg = reg
+
         self.mu_list = []
-        self.nu = None
 
     def distance(self, X_s: np.array, X_t: np.array):
         """
@@ -72,6 +78,9 @@ class SlicedWassersteinDivergence:
 
             # Compute 1D Wasserstein distance and accumulate
             mu = ot.emd(proj_X_s_dist_mass, proj_X_t_dist_mass, M_x)
+            # mu = ot.bregman.sinkhorn(
+            #     proj_X_s_dist_mass, proj_X_t_dist_mass, M_x, reg=self.reg
+            # )
             self.mu_list.append(mu)
 
             dist += torch.sum(mu * M_x)

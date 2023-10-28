@@ -100,14 +100,14 @@ def main():
     indice = (X_test.sample(sample_num)).index
     X = X_test.loc[indice].values
     y = model(torch.FloatTensor(X))
-    y_target = torch.zeros_like(y)
+    y_target = 0.8 * y
 
     # Counterfactual explanation
     logger.info("Counterfactual explanation optimization started.")
     explainer = DistributionalCounterfactualExplainer(
-        model=model, X=X, y_target=y_target, lr=0.025, epsilon=1, lambda_val=100
+        model=model, X=X, y_target=y_target, lr=0.2, epsilon=1e-6, lambda_val=10
     )
-    explainer.optimize(max_iter=2000)
+    explainer.optimize(max_iter=500)
 
     factual_X = df[df_X.columns].loc[indice].copy()
     counterfactual_X = pd.DataFrame(

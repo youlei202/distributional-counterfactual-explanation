@@ -5,17 +5,17 @@
 #!/bin/bash
 ### General options
 ### –- specify queue --
-#BSUB -q gpuv100
+#BSUB -q hpc
 ### -- set the job Name --
 #BSUB -J hotel_booking
 ### -- ask for number of cores (default: 1) --
 #BSUB -n 4
 ### -- Select the resources: 1 gpu in exclusive process mode --
-#BSUB -gpu "num=1:mode=exclusive_process"
+###BSUB -gpu "num=1:mode=exclusive_process"
 ### -- set walltime limit: hh:mm --  maximum 24 hours for GPU-queues right now
 #BSUB -W 2:00
 # request system-memory
-#BSUB -R "rusage[mem=10GB]"
+#BSUB -R "rusage[mem=2GB]"
 ### -- set the email address --
 # please uncomment the following line and put in your e-mail address,
 # if you want to receive e-mail notifications on a non-default address
@@ -26,8 +26,8 @@
 #BSUB -N
 ### -- Specify the output and error file. %J is the job-id --
 ### -- -o and -e mean append, -oo and -eo mean overwrite --
-#BSUB -o data/hotel_booking/logs/std.out
-#BSUB -e data/hotel_booking/logs/std.err
+#BSUB -oo data/hotel_booking/logs/std.out
+#BSUB -eo data/hotel_booking/logs/std.err
 # -- end of LSF options --
 
 

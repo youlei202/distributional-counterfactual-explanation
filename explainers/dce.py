@@ -28,7 +28,7 @@ class DistributionalCounterfactualExplainer:
         self.X.requires_grad_(True).retain_grad()
         self.best_X = None
         self.Qx_grads = None
-        self.optimizer = optim.Adam([self.X], lr=lr)
+        self.optimizer = optim.SGD([self.X], lr=lr)
 
         self.y = self.model(self.X)
         self.y_prime = y_target.clone().to(self.device)
@@ -77,9 +77,9 @@ class DistributionalCounterfactualExplainer:
             for j in range(m):
                 term += (
                     nu[i, j]
-                    * (self.model(self.X[i]) - self.model(self.X_prime[j])) ** 2
+                    * (self.model(self.X[i]) - self.y_prime[j]) ** 2
                 ).item()
-        self.term2 = self.lambda_val * (self.epsilon - term)
+        self.term2 = self.lambda_val * (term - self.epsilon)
 
         self.Q = self.term1 + self.term2
 
@@ -113,12 +113,12 @@ class DistributionalCounterfactualExplainer:
         gradient_term1 = torch.matmul(gradient_term1, torch.stack(thetas))  # Shape [n, d]
 
         # Compute the second term
-        # No need to loop through i and j. Instead, use broadcasting.
-        diff_model = self.model(self.X).unsqueeze(1) - self.model(self.X_prime).unsqueeze(0)
+        diff_model = self.model(self.X).unsqueeze(1) - self.y_prime.unsqueeze(0)
         nu = nu.to(self.device)
         gradient_term2 = (self.lambda_val * nu.unsqueeze(-1) * diff_model * model_grads.unsqueeze(1)).sum(dim=1)
 
         self.Qx_grads = gradient_term1 + gradient_term2
+        # self.Qx_grads = gradient_term2
         self.X.grad = self.Qx_grads
 
 
@@ -127,6 +127,7 @@ class DistributionalCounterfactualExplainer:
         max_iter: Optional[int] = 100,
         tol=1e-6,
     ):
+        past_Qs = [float("inf")] * 5  # Store the last 5 Q values for moving average
         for i in range(max_iter):
             self.swd.distance(X_s=self.X, X_t=self.X_prime)
             self.wd.distance(y_s=self.y, y_t=self.y_prime)
@@ -139,18 +140,27 @@ class DistributionalCounterfactualExplainer:
 
             # Perform an optimization step
             self.optimizer.step()
-            logger.info(f"Iteration {i+1} done.")
 
+            # Update the Q value and y by the newly optimized X
+            self._update_Q(mu_list=self.swd.mu_list, nu=self.wd.nu)
+            self.y = self.model(self.X)
 
-        # Update the Q value and y by the newly optimized X
-        self._update_Q(mu_list=self.swd.mu_list, nu=self.wd.nu)
-        self.y = self.model(self.X)
+            # logger.info(f"\t  Qx_grads = {self.Qx_grads}")
 
-        self.best_Q = self.Q.clone().detach()
-        self.best_X = self.X.clone().detach()
-        self.best_y = self.y.clone().detach()
+            if self.Q < self.best_Q:
+                self.best_Q = self.Q.clone().detach()
+                self.best_X = self.X.clone().detach()
+                self.best_y = self.y.clone().detach()
 
-        logger.info(
-            f"After optimization: Q = {self.Q}, term1 = {self.term1}, term2 = {self.term2}"
-        )
+            # Check for convergence using moving average of past Q changes
+            past_Qs.pop(0)
+            past_Qs.append(self.Q.item())
+            avg_Q_change = (past_Qs[-1] - past_Qs[0]) / 5
+            if abs(avg_Q_change) < tol:
+                logger.info(f"Converged at iteration {i+1}")
+                break
+
+            logger.info(
+                f"Iter {i+1}: Q = {self.Q}, term1 = {self.term1}, term2 = {self.term2}"
+            )
 

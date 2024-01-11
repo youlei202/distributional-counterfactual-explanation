@@ -9,7 +9,7 @@ class WassersteinDivergence:
         self.nu = None
         self.reg = reg
 
-    def distance(self, y_s: torch.tensor, y_t: torch.tensor, delta=0.25):
+    def distance(self, y_s: torch.tensor, y_t: torch.tensor, delta):
         # Validate delta
         if delta < 0 or delta > 0.5:
             raise ValueError("Delta should be between 0 and 0.5")
@@ -76,7 +76,7 @@ class SlicedWassersteinDivergence:
 
         self.mu_list = []
 
-    def distance(self, X_s: torch.tensor, X_t: torch.tensor, delta=0.25):
+    def distance(self, X_s: torch.tensor, X_t: torch.tensor, delta):
         """
         Compute the sliced Wasserstein distance between X_s and X_t
 
@@ -107,4 +107,4 @@ class SlicedWassersteinDivergence:
 
             dist += dist_wd
 
-        return dist / self.n_proj
+        return dist / self.n_proj, self.mu_list

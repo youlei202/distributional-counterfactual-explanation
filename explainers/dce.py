@@ -12,7 +12,15 @@ logger = setup_logger()
 
 class DistributionalCounterfactualExplainer:
     def __init__(
-        self, model, X, y_target, epsilon=0.1, lr=0.1, lambda_val=0.5, n_proj=50
+        self,
+        model,
+        X,
+        y_target,
+        epsilon=0.1,
+        lr=0.1,
+        lambda_val=0.5,
+        n_proj=50,
+        delta=0,
     ):
         # Set the device (GPU if available, otherwise CPU)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -44,6 +52,8 @@ class DistributionalCounterfactualExplainer:
         self.lambda_val = torch.tensor(
             lambda_val, dtype=torch.float, device=self.device
         )
+
+        self.delta = delta
 
     def _update_Q(self, mu_list, nu):
         n, m = self.X.shape[0], self.X_prime.shape[0]
@@ -149,8 +159,8 @@ class DistributionalCounterfactualExplainer:
     ):
         past_Qs = [float("inf")] * 5  # Store the last 5 Q values for moving average
         for i in range(max_iter):
-            self.swd.distance(X_s=self.X, X_t=self.X_prime)
-            self.wd.distance(y_s=self.y, y_t=self.y_prime)
+            self.swd.distance(X_s=self.X, X_t=self.X_prime, delta=self.delta)
+            self.wd.distance(y_s=self.y, y_t=self.y_prime, delta=self.delta)
 
             # Reset the gradients
             self.optimizer.zero_grad()

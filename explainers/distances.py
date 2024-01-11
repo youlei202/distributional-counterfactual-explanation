@@ -245,11 +245,15 @@ def bootstrap_1d(x, y, delta, r=2, alpha=0.05, B=1000, nq=1000):
     u : float
         upper confidence limit
     """
+    x = x.squeeze()
+    y = y.squeeze()
+
     n = x.shape[0]
     m = y.shape[0]
 
     W = []
-    dist_what, _ = wd.distance(torch.from_numpy(x), torch.from_numpy(y), delta)
+    dist_what, _ = wd.distance(x, y, delta)
+    dist_what = dist_what.detach().numpy()
 
     for b in range(B):
         I = np.random.choice(n, n)
@@ -257,7 +261,8 @@ def bootstrap_1d(x, y, delta, r=2, alpha=0.05, B=1000, nq=1000):
         I = np.random.choice(m, m)
         yy = y[I]
 
-        dist, _ = wd.distance(torch.from_numpy(xx), torch.from_numpy(yy), delta)
+        dist, _ = wd.distance(xx, yy, delta)
+        dist = dist.detach().numpy()
         W.append(dist - dist_what)
 
     q1 = np.quantile(W, alpha / 2)

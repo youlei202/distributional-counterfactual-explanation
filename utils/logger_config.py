@@ -4,7 +4,7 @@ import sys
 
 def setup_logger():
     # Set up logging configurations
-    logger = logging.getLogger(__name__)
+    # logger = logging.getLogger(__name__)
 
     # if not logger.handlers:  # Check if handlers are already added
     #     logger.setLevel(logging.INFO)
@@ -16,5 +16,9 @@ def setup_logger():
     #     stdout_handler.setFormatter(formatter)
 
     #     logger.addHandler(stdout_handler)
+
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    # logging.debug("test")
 
     return logger

@@ -152,11 +152,12 @@ class DistributionalCounterfactualExplainer:
         # self.Qx_grads = gradient_term2
         self.X.grad = self.Qx_grads
 
-    def optimize(
+    def optimize_without_chance_constraints(
         self,
         max_iter: Optional[int] = 100,
         tol=1e-6,
     ):
+        logger.info("Optimization (without chance constraints) started")
         past_Qs = [float("inf")] * 5  # Store the last 5 Q values for moving average
         for i in range(max_iter):
             self.swd.distance(X_s=self.X, X_t=self.X_prime, delta=self.delta)
@@ -193,3 +194,11 @@ class DistributionalCounterfactualExplainer:
             logger.info(
                 f"Iter {i+1}: Q = {self.Q}, term1 = {self.term1}, term2 = {self.term2}"
             )
+
+    def optimize(self, max_iter: Optional[int] = 100, tol=1e-6, alpha=0.05):
+        logger.info("Optimization started")
+        logger.info("Optimization (without chance constraints) started")
+        past_Qs = [float("inf")] * 5  # Store the last 5 Q values for moving average
+        for i in range(max_iter):
+            self.swd.distance(X_s=self.X, X_t=self.X_prime, delta=self.delta)
+            self.wd.distance(y_s=self.y, y_t=self.y_prime, delta=self.delta)

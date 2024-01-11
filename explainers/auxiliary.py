@@ -1,5 +1,9 @@
 ## The code origins from
 ## https://github.com/tmanole/SW-inference/blob/master/auxiliary.py
+##
+## Manole, Tudor, Sivaraman Balakrishnan, and Larry Wasserman.
+## "Minimax confidence intervals for the sliced wasserstein distance."
+## Electronic Journal of Statistics 16.1 (2022): 2252-2345.
 
 import numpy as np
 
@@ -21,7 +25,7 @@ def _sample_quantile(x, u):
     if np.any(u >= 1):
         raise OverflowError("Infinite quantile.")
 
-    n = x.size
+    n = len(x)
 
     if n == 1:
         return np.repeat(x[0], u.size)
@@ -39,7 +43,7 @@ def _dkw(x, u, alpha):
     """DKW lower and upper (1-alpha/2)-confidence bands for the u-quantiles of a distribution,
     based on a sample x."""
 
-    n = x.size
+    n = len(x)
     gam = np.sqrt((1 / (2 * n)) * np.log(4 / alpha))  # 4 instead of 2.
     lower = _sample_quantile(x, u - gam)
     upper = _sample_quantile(x, u + gam)
@@ -51,7 +55,7 @@ def _rel_vc(x, u, alpha):
     """Relative VC lower and upper (1-alpha/2)-confidence bands for the u-quantiles of a distribution,
     based on a sample x."""
 
-    n = x.size
+    n = len(x)
 
     alpha_n = 2 * np.sqrt((np.log(2 * n + 1) + np.log(8 / alpha)) / n)
     beta_n = (np.log(4 * n + 1) + np.log(8 / alpha)) / n
@@ -79,7 +83,7 @@ def _rel_vc(x, u, alpha):
 
 def _half_vc(x, u, d, alpha):
     """Lower and upper quantile confidence bounds based on the VC inequality over the collection of half spaces in dimension d."""
-    n = x.size
+    n = len(x)
     gamma = np.sqrt((32 / (n)) * (np.log(8 / alpha) + (d + 1) * np.log(n + 1)))
 
     print(u)

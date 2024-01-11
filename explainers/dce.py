@@ -76,8 +76,7 @@ class DistributionalCounterfactualExplainer:
         for i in range(n):
             for j in range(m):
                 term += (
-                    nu[i, j]
-                    * (self.model(self.X[i]) - self.y_prime[j]) ** 2
+                    nu[i, j] * (self.model(self.X[i]) - self.y_prime[j]) ** 2
                 ).item()
         self.term2 = self.lambda_val * (term - self.epsilon)
 
@@ -99,28 +98,49 @@ class DistributionalCounterfactualExplainer:
         model_grads = self.X.grad.clone()  # Store the gradients
 
         # Compute the first term
-        X_proj = torch.stack([torch.matmul(self.X, theta) for theta in thetas], dim=1)  # [n, num_thetas]
-        X_prime_proj = torch.stack([torch.matmul(self.X_prime, theta) for theta in thetas], dim=1)  # [m, num_thetas]
-        
+        X_proj = torch.stack(
+            [torch.matmul(self.X, theta) for theta in thetas], dim=1
+        )  # [n, num_thetas]
+        X_prime_proj = torch.stack(
+            [torch.matmul(self.X_prime, theta) for theta in thetas], dim=1
+        )  # [m, num_thetas]
+
         # Use broadcasting to compute differences for all i, j
-        differences = X_proj[:, :, None] - X_prime_proj.T[None, :, :]  # Shape [n, num_thetas, m]
+        differences = (
+            X_proj[:, :, None] - X_prime_proj.T[None, :, :]
+        )  # Shape [n, num_thetas, m]
 
         # Multiply by mu and sum over j
-        gradient_term1_matrix = torch.stack([mu.to(self.device) * differences[:, k, :] for k, mu in enumerate(mu_list)], dim=1)  # [n, num_thetas, m]
-        gradient_term1 = torch.sum(gradient_term1_matrix, dim=2)  # Shape [n, num_thetas]
+        gradient_term1_matrix = torch.stack(
+            [mu.to(self.device) * differences[:, k, :] for k, mu in enumerate(mu_list)],
+            dim=1,
+        )  # [n, num_thetas, m]
+        gradient_term1 = torch.sum(
+            gradient_term1_matrix, dim=2
+        )  # Shape [n, num_thetas]
 
         # Weight by theta to get the gradient
-        gradient_term1 = torch.matmul(gradient_term1, torch.stack(thetas))  # Shape [n, d]
+        gradient_term1 = torch.matmul(
+            gradient_term1, torch.stack(thetas)
+        )  # Shape [n, d]
 
         # Compute the second term
-        diff_model = self.model(self.X).unsqueeze(1) - self.y_prime.unsqueeze(0)
+        diff_model = self.model(self.X).unsqueeze(1) - self.y_prime.reshape(
+            len(self.y_prime), 1
+        )
         nu = nu.to(self.device)
-        gradient_term2 = (self.lambda_val * nu.unsqueeze(-1) * diff_model * model_grads.unsqueeze(1)).sum(dim=1)
+
+        self.nu = nu
+        self.diff_model = diff_model
+        self.model_grads = model_grads
+
+        gradient_term2 = (
+            self.lambda_val * nu.unsqueeze(-1) * diff_model * model_grads.unsqueeze(1)
+        ).sum(dim=1)
 
         self.Qx_grads = gradient_term1 + gradient_term2
         # self.Qx_grads = gradient_term2
         self.X.grad = self.Qx_grads
-
 
     def optimize(
         self,
@@ -163,4 +183,3 @@ class DistributionalCounterfactualExplainer:
             logger.info(
                 f"Iter {i+1}: Q = {self.Q}, term1 = {self.term1}, term2 = {self.term2}"
             )
-

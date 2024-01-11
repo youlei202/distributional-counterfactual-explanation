@@ -9,10 +9,13 @@ class WassersteinDivergence:
         self.nu = None
         self.reg = reg
 
-    def distance(self, y_s: torch.tensor, y_t: torch.tensor, delta=0):
+    def distance(self, y_s: torch.tensor, y_t: torch.tensor, delta=0.25):
         # Validate delta
         if delta < 0 or delta > 0.5:
             raise ValueError("Delta should be between 0 and 0.5")
+
+        y_s = y_s.squeeze()
+        y_t = y_t.squeeze()
 
         # Calculate quantiles
         lower_quantile_s = torch.quantile(y_s, delta)
@@ -20,25 +23,43 @@ class WassersteinDivergence:
         lower_quantile_t = torch.quantile(y_t, delta)
         upper_quantile_t = torch.quantile(y_t, 1 - delta)
 
+        # Indices in the original tensors that correspond to the filtered values
+        indices_s = torch.where((y_s >= lower_quantile_s) & (y_s <= upper_quantile_s))[
+            0
+        ]
+        indices_t = torch.where((y_t >= lower_quantile_t) & (y_t <= upper_quantile_t))[
+            0
+        ]
+
+        # Create a meshgrid to identify the locations in self.nu to be updated
+        indices_s_grid, indices_t_grid = torch.meshgrid(
+            indices_s, indices_t, indexing="ij"
+        )
+
         # Filter data points
-        y_s_filtered = y_s[(y_s >= lower_quantile_s) & (y_s <= upper_quantile_s)]
-        y_t_filtered = y_t[(y_t >= lower_quantile_t) & (y_t <= upper_quantile_t)]
+        y_s_filtered = y_s[indices_s]
+        y_t_filtered = y_t[indices_t]
 
         proj_y_s_dist_mass = torch.ones(len(y_s_filtered)) / len(y_s_filtered)
         proj_y_t_dist_mass = torch.ones(len(y_t_filtered)) / len(y_t_filtered)
 
-        M_y = ot.dist(
+        trimmed_M_y = ot.dist(
             y_s_filtered.reshape(y_s_filtered.shape[0], 1),
             y_t_filtered.reshape(y_t_filtered.shape[0], 1),
             metric="sqeuclidean",
         ).to("cpu")
 
-        self.nu = ot.emd(proj_y_s_dist_mass, proj_y_t_dist_mass, M_y)
-        # self.nu = ot.bregman.sinkhorn(
+        trimmed_nu = ot.emd(proj_y_s_dist_mass, proj_y_t_dist_mass, trimmed_M_y)
+        # trimmed_nu = ot.bregman.sinkhorn(
         #     proj_y_s_dist_mass, proj_y_t_dist_mass, M_y, reg=self.reg
         # )
-        # self.nu = torch.diag(torch.ones(len(y_s)))
-        dist = torch.sum(self.nu * M_y)
+        # trimmed_nu = torch.diag(torch.ones(len(y_s)))
+        dist = torch.sum(trimmed_nu * trimmed_M_y)
+
+        self.nu = torch.zeros(len(y_s), len(y_t))
+
+        # Place the values of trimmed_nu in the correct positions in self.nu
+        self.nu[indices_s_grid, indices_t_grid] = trimmed_nu
 
         return dist, self.nu
 
@@ -55,7 +76,7 @@ class SlicedWassersteinDivergence:
 
         self.mu_list = []
 
-    def distance(self, X_s: torch.tensor, X_t: torch.tensor, delta=0):
+    def distance(self, X_s: torch.tensor, X_t: torch.tensor, delta=0.25):
         """
         Compute the sliced Wasserstein distance between X_s and X_t
 

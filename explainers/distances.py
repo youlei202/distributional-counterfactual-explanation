@@ -9,16 +9,29 @@ class WassersteinDivergence:
         self.nu = None
         self.reg = reg
 
-    def distance(self, y_s: np.array, y_t: np.array):
+    def distance(self, y_s: torch.tensor, y_t: torch.tensor, delta=0):
+        # Validate delta
+        if delta < 0 or delta > 0.5:
+            raise ValueError("Delta should be between 0 and 0.5")
 
-        proj_y_s_dist_mass = torch.ones(len(y_s)) / len(y_s)
-        proj_y_t_dist_mass = torch.ones(len(y_t)) / len(y_t)
+        # Calculate quantiles
+        lower_quantile_s = torch.quantile(y_s, delta)
+        upper_quantile_s = torch.quantile(y_s, 1 - delta)
+        lower_quantile_t = torch.quantile(y_t, delta)
+        upper_quantile_t = torch.quantile(y_t, 1 - delta)
+
+        # Filter data points
+        y_s_filtered = y_s[(y_s >= lower_quantile_s) & (y_s <= upper_quantile_s)]
+        y_t_filtered = y_t[(y_t >= lower_quantile_t) & (y_t <= upper_quantile_t)]
+
+        proj_y_s_dist_mass = torch.ones(len(y_s_filtered)) / len(y_s_filtered)
+        proj_y_t_dist_mass = torch.ones(len(y_t_filtered)) / len(y_t_filtered)
 
         M_y = ot.dist(
-            y_s.reshape(y_s.shape[0], 1),
-            y_t.reshape(y_t.shape[0], 1),
+            y_s_filtered.reshape(y_s_filtered.shape[0], 1),
+            y_t_filtered.reshape(y_t_filtered.shape[0], 1),
             metric="sqeuclidean",
-        ).to('cpu')
+        ).to("cpu")
 
         self.nu = ot.emd(proj_y_s_dist_mass, proj_y_t_dist_mass, M_y)
         # self.nu = ot.bregman.sinkhorn(
@@ -27,7 +40,7 @@ class WassersteinDivergence:
         # self.nu = torch.diag(torch.ones(len(y_s)))
         dist = torch.sum(self.nu * M_y)
 
-        return dist
+        return dist, self.nu
 
 
 class SlicedWassersteinDivergence:
@@ -36,12 +49,13 @@ class SlicedWassersteinDivergence:
         self.n_proj = n_proj
         self.thetas = np.random.randn(n_proj, dim)
         self.thetas /= np.linalg.norm(self.thetas, axis=1)[:, None]
+        self.wd = WassersteinDivergence()
 
         self.reg = reg
 
         self.mu_list = []
 
-    def distance(self, X_s: np.array, X_t: np.array):
+    def distance(self, X_s: torch.tensor, X_t: torch.tensor, delta=0):
         """
         Compute the sliced Wasserstein distance between X_s and X_t
 
@@ -58,31 +72,18 @@ class SlicedWassersteinDivergence:
             Sliced Wasserstein Distance between X_s and X_t
         """
 
-        proj_X_s_dist_mass = torch.ones(len(X_s)) / len(X_s)
-        proj_X_t_dist_mass = torch.ones(len(X_t)) / len(X_t)
-
         self.mu_list = []
         dist = 0
         for theta in self.thetas:
-            
             # Project data onto the vector theta
             theta = torch.from_numpy(theta).float()
-            proj_X_s = X_s.to('cpu') @ theta
-            proj_X_t = X_t.to('cpu') @ theta
+            proj_X_s = X_s.to("cpu") @ theta
+            proj_X_t = X_t.to("cpu") @ theta
 
-            M_x = ot.dist(
-                proj_X_s.reshape(proj_X_s.shape[0], 1),
-                proj_X_t.reshape(proj_X_t.shape[0], 1),
-                metric="sqeuclidean",
-            )
+            dist_wd, mu = self.wd.distance(proj_X_s, proj_X_t, delta)
 
-            # Compute 1D Wasserstein distance and accumulate
-            mu = ot.emd(proj_X_s_dist_mass, proj_X_t_dist_mass, M_x)
-            # mu = ot.bregman.sinkhorn(
-            #     proj_X_s_dist_mass, proj_X_t_dist_mass, M_x, reg=self.reg
-            # )
             self.mu_list.append(mu)
 
-            dist += torch.sum(mu * M_x)
+            dist += dist_wd
 
         return dist / self.n_proj

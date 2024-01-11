@@ -59,7 +59,7 @@ class WassersteinDivergence:
         #     proj_y_s_dist_mass, proj_y_t_dist_mass, M_y, reg=self.reg
         # )
         # trimmed_nu = torch.diag(torch.ones(len(y_s)))
-        dist = torch.sum(trimmed_nu * trimmed_M_y)
+        dist = torch.sum(trimmed_nu * trimmed_M_y) * (1 / (1 - 2 * delta))
 
         self.nu = torch.zeros(len(y_s), len(y_t))
 
@@ -177,6 +177,8 @@ def exact_1d(x, y, delta, r=2, alpha=0.05, mode="DKW", nq=1000):
            their probabilities. Theory of Probability and its Applications 16 (1971) 264–280.
 
     """
+    x = x.squeeze()
+    y = y.squeeze()
     us = np.linspace(delta, 1 - delta, nq)
 
     if mode == "DKW":
@@ -268,3 +270,36 @@ def bootstrap_1d(x, y, delta, r=2, alpha=0.05, B=1000, nq=1000):
         return 0, 0
 
     return np.power(Wlower, 1 / r), np.power(Wupper, 1 / r)
+
+
+def w(x, y, delta, r=2, nq=1000):
+    """Delta-Trimmed r-Wasserstein distance between the empirical measures of two
+    one-dimensional samples.
+
+    Parameters
+    ----------
+    x : np.ndarray (n,)
+        sample from P
+    y : np.ndarray (m,)
+        sample from Q
+    r : int, optional
+        order of the Wasserstein distance
+    delta : float, optional
+        trimming constant, between 0 and 0.5.
+    nq : int, optional
+        number of quantiles to use in Monte Carlo integral approximations
+
+    Returns
+    -------
+    W : float
+        delta-trimmed r-Wasserstein distance
+    """
+
+    us = np.linspace(delta, 1 - delta, nq)
+
+    x_quant = aux._sample_quantile(x, us)
+    y_quant = aux._sample_quantile(y, us)
+
+    integ = np.mean(np.float_power(np.abs(x_quant - y_quant), r))
+
+    return np.float_power(((1 / (1 - 2 * delta)) * integ), 1 / r)

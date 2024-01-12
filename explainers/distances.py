@@ -74,8 +74,16 @@ class WassersteinDivergence:
         y_t: torch.tensor,
         delta: float,
         alpha: Optional[float] = 0.05,
+        bootstrap=True,
     ):
-        return exact_1d(y_s.detach().numpy(), y_t.detach().numpy(), delta, alpha=alpha)
+        if bootstrap:
+            return bootstrap_1d(
+                y_s.detach().numpy(), y_t.detach().numpy(), delta=delta, alpha=alpha
+            )
+        else:
+            return exact_1d(
+                y_s.detach().numpy(), y_t.detach().numpy(), delta=delta, alpha=alpha
+            )
 
 
 class SlicedWassersteinDivergence:
@@ -138,27 +146,31 @@ class SlicedWassersteinDivergence:
         X_t: torch.tensor,
         delta: float,
         alpha: Optional[float] = 0.05,
+        bootstrap=True,
     ):
-        N = len(self.thetas)
-        low = []
-        up = []
-        for theta in self.thetas:
-            # Project data onto the vector theta
-            theta = torch.from_numpy(theta).float()
-            proj_X_s = X_s.to("cpu") @ theta
-            proj_X_t = X_t.to("cpu") @ theta
+        if bootstrap:
+            return bootstrap_sw(X_s, X_t, delta=delta, alpha=alpha, N=self.n_proj)
+        else:
+            N = len(self.thetas)
+            low = []
+            up = []
+            for theta in self.thetas:
+                # Project data onto the vector theta
+                theta = torch.from_numpy(theta).float()
+                proj_X_s = X_s.to("cpu") @ theta
+                proj_X_t = X_t.to("cpu") @ theta
 
-            l, u = self.wd.distance_interval(
-                proj_X_s, proj_X_t, delta=delta, alpha=alpha / N
-            )
+                l, u = self.wd.distance_interval(
+                    proj_X_s, proj_X_t, delta=delta, alpha=alpha / N
+                )
 
-            low.append(np.power(l, 2))
-            up.append(np.power(u, 2))
+                low.append(np.power(l, 2))
+                up.append(np.power(u, 2))
 
-        left = np.power(np.mean(low), 1 / 2)
-        right = np.power(np.mean(up), 1 / 2)
+            left = np.power(np.mean(low), 1 / 2)
+            right = np.power(np.mean(up), 1 / 2)
 
-        return left, right
+            return left, right
 
 
 ## The code below refers to
@@ -254,56 +266,31 @@ def exact_1d(x, y, delta, alpha, r=2, mode="DKW", nq=1000):
 
 
 def bootstrap_1d(x, y, delta, alpha, r=2, B=200):
-    """Bootstrap confidence intervals for W_{r,delta}(P, Q) in one dimension.
+    x = torch.tensor(x, dtype=torch.float32).squeeze()
+    y = torch.tensor(y, dtype=torch.float32).squeeze()
 
-    Parameters
-    ----------
-    x : np.ndarray (n,)
-        sample from P
-    y : np.ndarray (m,)
-        sample from Q
-    r : int, optional
-        order of the Wasserstein distance
-    delta : float, optional
-        trimming constant, between 0 and 0.5.
-    alpha : float, optional
-        number between 0 and 1, such that 1-alpha is the level of the confidence interval
-    B : int, optional
-        number of bootstrap replications
+    n, m = x.shape[0], y.shape[0]
 
-    Returns
-    -------
-    l : float
-        lower confidence limit
-
-    u : float
-        upper confidence limit
-    """
-    x = x.squeeze()
-    y = y.squeeze()
-
-    n = x.shape[0]
-    m = y.shape[0]
-
-    W = []
     wd = WassersteinDivergence()
     dist_what, _ = wd.distance(x, y, delta)
     dist_what = dist_what.detach().numpy()
 
-    for _ in range(B):
-        I = np.random.choice(n, n)
-        xx = x[I]
-        I = np.random.choice(m, m)
-        yy = y[I]
+    # Generate all bootstrap indices at once
+    x_indices = np.random.choice(n, (B, n))
+    y_indices = np.random.choice(m, (B, m))
+
+    W = np.empty(B)
+    for i in range(B):
+        xx = x[x_indices[i]]
+        yy = y[y_indices[i]]
 
         dist, _ = wd.distance(xx, yy, delta)
         dist = dist.detach().numpy()
-        W.append(dist - dist_what)
+        W[i] = dist - dist_what
 
-    q1 = np.quantile(W, alpha / 2)
-    q2 = np.quantile(W, 1 - alpha / 2)
+    q1, q2 = np.quantile(W, [alpha / 2, 1 - alpha / 2])
 
-    Wlower = np.max([dist_what - q2, 0])
+    Wlower = np.maximum(dist_what - q2, 0)
     Wupper = dist_what - q1
 
     if Wupper < 0:
@@ -312,63 +299,32 @@ def bootstrap_1d(x, y, delta, alpha, r=2, B=200):
     return np.power(Wlower, 1 / r), np.power(Wupper, 1 / r)
 
 
-def bootstrap_sw(x, y, delta, alpha, r=2, B=200, N=500):
-    """Bootstrap confidence interval for SW_{r,delta}(P, Q).
+def bootstrap_sw(x, y, delta, alpha, N, r=2, B=200):
+    x = torch.tensor(x, dtype=torch.float32)
+    y = torch.tensor(y, dtype=torch.float32)
 
-    Parameters
-    ----------
-    x : np.ndarray (n,d)
-        sample from P
-    y : np.ndarray (m,d)
-        sample from Q
-    r : int, optional
-        order of the Wasserstein distance
-    delta : float, optional
-        trimming constant, between 0 and 0.5.
-    alpha : float, optional
-        number between 0 and 1, such that 1-alpha is the level of the confidence interval
-    B : int, optional
-        number of bootstrap replications
-    N : int, optional
-        number of Monte Carlo draws from the unit sphere
-    theta: np.ndarray (N, d), optional
-        sample from the unit sphere to be used, if specified
+    n, m, d = x.shape[0], y.shape[0], x.shape[1]
 
-    Returns
-    -------
-    l : float
-        lower confidence limit
-
-    u : float
-        upper confidence limit
-    """
-    x = x.reshape(len(x), len(x[0]))
-    y = y.reshape(len(y), len(y[0]))
-
-    n = x.shape[0]
-    m = y.shape[0]
-    d = x.shape[1]
-
-    boot = []
     swd = SlicedWassersteinDivergence(dim=d, n_proj=N)
     SW_hat, _ = swd.distance(x, y, delta)
     SW_hat = SW_hat.detach().numpy()
 
-    for _ in range(B):
-        x_ind = np.random.choice(n, n)
-        xx = x[x_ind, :]
+    # Generate all bootstrap indices at once
+    x_indices = np.random.choice(n, (B, n))
+    y_indices = np.random.choice(m, (B, m))
 
-        y_ind = np.random.choice(m, m)
-        yy = y[y_ind, :]
+    boot = np.empty(B)
+    for i in range(B):
+        xx = x[x_indices[i], :]
+        yy = y[y_indices[i], :]
 
         SW_boot, _ = swd.distance(xx, yy, delta)
         SW_boot = SW_boot.detach().numpy()
-        boot.append(SW_boot - SW_hat)
+        boot[i] = SW_boot - SW_hat
 
-    q1 = np.quantile(boot, alpha / 2)
-    q2 = np.quantile(boot, 1 - alpha / 2)
+    q1, q2 = np.quantile(boot, [alpha / 2, 1 - alpha / 2])
 
-    SW_lower = np.max([SW_hat - q2, 0])
+    SW_lower = np.maximum(SW_hat - q2, 0)
     SW_upper = SW_hat - q1
 
     return np.power(SW_lower, 1 / r), np.power(SW_upper, 1 / r)

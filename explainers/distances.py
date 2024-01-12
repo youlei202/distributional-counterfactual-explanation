@@ -169,7 +169,6 @@ class SlicedWassersteinDivergence:
 ## Electronic Journal of Statistics 16.1 (2022): 2252-2345.
 
 """ One-dimensional CIs. """
-wd = WassersteinDivergence()
 
 
 def exact_1d(x, y, delta, alpha, r=2, mode="DKW", nq=1000):
@@ -289,6 +288,7 @@ def bootstrap_1d(x, y, delta, alpha, r=2, B=1000, nq=1000):
     m = y.shape[0]
 
     W = []
+    wd = WassersteinDivergence()
     dist_what, _ = wd.distance(x, y, delta)
     dist_what = dist_what.detach().numpy()
 
@@ -312,3 +312,63 @@ def bootstrap_1d(x, y, delta, alpha, r=2, B=1000, nq=1000):
         return 0, 0
 
     return np.power(Wlower, 1 / r), np.power(Wupper, 1 / r)
+
+
+def bootstrap_sw(x, y, delta, alpha, r=2, B=1000, N=500):
+    """Bootstrap confidence interval for SW_{r,delta}(P, Q).
+
+    Parameters
+    ----------
+    x : np.ndarray (n,d)
+        sample from P
+    y : np.ndarray (m,d)
+        sample from Q
+    r : int, optional
+        order of the Wasserstein distance
+    delta : float, optional
+        trimming constant, between 0 and 0.5.
+    alpha : float, optional
+        number between 0 and 1, such that 1-alpha is the level of the confidence interval
+    B : int, optional
+        number of bootstrap replications
+    N : int, optional
+        number of Monte Carlo draws from the unit sphere
+    theta: np.ndarray (N, d), optional
+        sample from the unit sphere to be used, if specified
+
+    Returns
+    -------
+    l : float
+        lower confidence limit
+
+    u : float
+        upper confidence limit
+    """
+    x = x.reshape(len(x), len(x[0]))
+    y = y.reshape(len(y), len(y[0]))
+
+    n = x.shape[0]
+    m = y.shape[0]
+    d = x.shape[1]
+
+    boot = []
+    swd = SlicedWassersteinDivergence(dim=d, n_proj=N)
+    SW_hat, _ = swd.distance(x, y, delta)
+
+    for _ in range(B):
+        x_ind = np.random.choice(n, n)
+        xx = x[x_ind, :]
+
+        y_ind = np.random.choice(m, m)
+        yy = y[y_ind, :]
+
+        SW_boot, _ = swd.distance(xx, yy, delta)
+        boot.append(SW_hat - SW_boot)
+
+    q1 = np.quantile(boot, alpha / 2)
+    q2 = np.quantile(boot, 1 - alpha / 2)
+
+    SW_lower = np.max([SW_hat - q2, 0])
+    SW_upper = SW_hat - q1
+
+    return np.power(SW_lower, 1 / r), np.power(SW_upper, 1 / r)

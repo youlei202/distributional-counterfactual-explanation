@@ -19,7 +19,7 @@ class DistributionalCounterfactualExplainer:
         epsilon=0.1,
         lr=0.1,
         lambda_val=0.5,
-        n_proj=500,
+        n_proj=50,
         delta=0,
     ):
         # Set the device (GPU if available, otherwise CPU)

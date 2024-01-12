@@ -12,6 +12,7 @@ from models.mlp import BlackBoxModel
 import pickle
 import os
 from explainers.dce import DistributionalCounterfactualExplainer
+from explainers.distances import bootstrap_1d, bootstrap_sw
 from utils.logger_config import setup_logger
 
 
@@ -19,7 +20,9 @@ logger = setup_logger()
 
 read_data_path = "data/"
 dump_data_path = "data/hotel_booking/"
-sample_num = 10
+sample_num = 60
+delta = 0.25
+alpha = 0.10
 
 
 def main():
@@ -98,17 +101,55 @@ def main():
         correct_predictions = (y_pred_tensor == y_test_tensor).float().sum()
         accuracy = correct_predictions / y_test_tensor.shape[0]
 
+    logger.Info(f"Accuracy = {accuracy.item()}")
+
     indice = (X_test.sample(sample_num)).index
     X = X_test.loc[indice].values
     y = model(torch.FloatTensor(X))
-    y_target = 0.8 * y
+    y_target = torch.distributions.beta.Beta(0.1, 0.9).sample((sample_num,))
+    y_true = y_test.loc[indice]
 
     # Counterfactual explanation
     logger.info("Counterfactual explanation optimization started.")
     explainer = DistributionalCounterfactualExplainer(
-        model=model, X=X, y_target=y_target, lr=0.1, epsilon=1e-6, lambda_val=100
+        model=model,
+        X=X,
+        y_target=y_target,
+        lr=1e-1,
+        epsilon=0.5,
+        lambda_val=100,
+        delta=delta,
+        n_proj=500,
     )
-    explainer.optimize(max_iter=500)
+
+    logger.Info(
+        "WD:", np.sqrt(explainer.wd.distance(y, y_target, delta=delta)[0].item())
+    )
+    logger.Info(
+        "WD Exact Interval:",
+        explainer.wd.distance_interval(y, y_target, delta=delta, alpha=alpha),
+    )
+    logger.Info(
+        "WD Bootstrap Interval:", bootstrap_1d(y, y_target, delta=delta, alpha=alpha)
+    )
+
+    explainer.optimize_without_chance_constraints(max_iter=20)
+
+    logger.Info(
+        "SWD:",
+        np.sqrt(
+            explainer.swd.distance(explainer.X, explainer.X_prime, delta)[0].item()
+        ),
+    )
+    logger.Info(
+        "SWD Exact Interval:",
+        explainer.swd.distance_interval(
+            explainer.X, explainer.X_prime, delta, alpha=alpha
+        ),
+    )
+    logger.Info(
+        "SWD Bootstrap Interval:", bootstrap_sw(X_s, X_t, delta=delta, alpha=alpha)
+    )
 
     factual_X = df[df_X.columns].loc[indice].copy()
     counterfactual_X = pd.DataFrame(

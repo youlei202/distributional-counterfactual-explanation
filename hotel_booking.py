@@ -138,7 +138,7 @@ def main():
     logger.Info(
         "SWD:",
         np.sqrt(
-            explainer.swd.distance(explainer.X, explainer.X_prime, delta)[0].item()
+            explainer.swd.distance(explainer.best_X, explainer.X_prime, delta)[0].item()
         ),
     )
     logger.Info(
@@ -148,7 +148,7 @@ def main():
         ),
     )
     logger.Info(
-        "SWD Bootstrap Interval:", bootstrap_sw(X_s, X_t, delta=delta, alpha=alpha)
+        "SWD Bootstrap Interval:", bootstrap_sw(explainer.best_X, explainer.X_prime, delta=delta, alpha=alpha)
     )
 
     factual_X = df[df_X.columns].loc[indice].copy()

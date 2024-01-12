@@ -82,8 +82,17 @@ class SlicedWassersteinDivergence:
     def __init__(self, dim: int, n_proj: int, reg=1):
         self.dim = dim
         self.n_proj = n_proj
-        self.thetas = np.random.randn(n_proj, dim)
-        self.thetas /= np.linalg.norm(self.thetas, axis=1)[:, None]
+        # self.thetas = np.random.randn(n_proj, dim)
+        # self.thetas /= np.linalg.norm(self.thetas, axis=1)[:, None]
+
+        # sample from the unit sphere
+        self.thetas = np.random.multivariate_normal(
+            np.repeat(0, dim), np.identity(dim), size=n_proj
+        )
+        self.thetas = np.apply_along_axis(
+            lambda x: x / np.linalg.norm(x), 1, self.thetas
+        )
+
         self.wd = WassersteinDivergence()
 
         self.reg = reg
@@ -123,6 +132,34 @@ class SlicedWassersteinDivergence:
 
         return dist / self.n_proj, self.mu_list
 
+    def distance_interval(
+        self,
+        X_s: torch.tensor,
+        X_t: torch.tensor,
+        delta: float,
+        alpha: Optional[float] = 0.05,
+    ):
+        N = len(self.thetas)
+        low = []
+        up = []
+        for theta in self.thetas:
+            # Project data onto the vector theta
+            theta = torch.from_numpy(theta).float()
+            proj_X_s = X_s.to("cpu") @ theta
+            proj_X_t = X_t.to("cpu") @ theta
+
+            l, u = self.wd.distance_interval(
+                proj_X_s, proj_X_t, delta=delta, alpha=alpha / N
+            )
+
+            low.append(np.power(l, 2))
+            up.append(np.power(u, 2))
+
+        left = np.power(np.mean(low), 1 / 2)
+        right = np.power(np.mean(up), 1 / 2)
+
+        return left, right
+
 
 ## The code below refers to
 ## https://github.com/tmanole/SW-inference/blob/master/ci.py
@@ -135,7 +172,7 @@ class SlicedWassersteinDivergence:
 wd = WassersteinDivergence()
 
 
-def exact_1d(x, y, delta, r=2, alpha=0.05, mode="DKW", nq=1000):
+def exact_1d(x, y, delta, alpha, r=2, mode="DKW", nq=1000):
     """Confidence intervals for W_{r,delta}(P, Q) in one dimension.
 
     Parameters
@@ -217,7 +254,7 @@ def exact_1d(x, y, delta, r=2, alpha=0.05, mode="DKW", nq=1000):
     return lower_final, upper_final
 
 
-def bootstrap_1d(x, y, delta, r=2, alpha=0.05, B=1000, nq=1000):
+def bootstrap_1d(x, y, delta, alpha, r=2, B=1000, nq=1000):
     """Bootstrap confidence intervals for W_{r,delta}(P, Q) in one dimension.
 
     Parameters
@@ -255,7 +292,7 @@ def bootstrap_1d(x, y, delta, r=2, alpha=0.05, B=1000, nq=1000):
     dist_what, _ = wd.distance(x, y, delta)
     dist_what = dist_what.detach().numpy()
 
-    for b in range(B):
+    for _ in range(B):
         I = np.random.choice(n, n)
         xx = x[I]
         I = np.random.choice(m, m)

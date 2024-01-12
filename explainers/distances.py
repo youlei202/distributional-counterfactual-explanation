@@ -253,7 +253,7 @@ def exact_1d(x, y, delta, alpha, r=2, mode="DKW", nq=1000):
     return lower_final, upper_final
 
 
-def bootstrap_1d(x, y, delta, alpha, r=2, B=1000, nq=1000):
+def bootstrap_1d(x, y, delta, alpha, r=2, B=200):
     """Bootstrap confidence intervals for W_{r,delta}(P, Q) in one dimension.
 
     Parameters
@@ -270,8 +270,6 @@ def bootstrap_1d(x, y, delta, alpha, r=2, B=1000, nq=1000):
         number between 0 and 1, such that 1-alpha is the level of the confidence interval
     B : int, optional
         number of bootstrap replications
-    nq : int, optional
-        number of quantiles to use in Monte Carlo integral approximations
 
     Returns
     -------
@@ -314,7 +312,7 @@ def bootstrap_1d(x, y, delta, alpha, r=2, B=1000, nq=1000):
     return np.power(Wlower, 1 / r), np.power(Wupper, 1 / r)
 
 
-def bootstrap_sw(x, y, delta, alpha, r=2, B=1000, N=500):
+def bootstrap_sw(x, y, delta, alpha, r=2, B=200, N=500):
     """Bootstrap confidence interval for SW_{r,delta}(P, Q).
 
     Parameters
@@ -354,6 +352,7 @@ def bootstrap_sw(x, y, delta, alpha, r=2, B=1000, N=500):
     boot = []
     swd = SlicedWassersteinDivergence(dim=d, n_proj=N)
     SW_hat, _ = swd.distance(x, y, delta)
+    SW_hat = SW_hat.detach().numpy()
 
     for _ in range(B):
         x_ind = np.random.choice(n, n)
@@ -363,7 +362,8 @@ def bootstrap_sw(x, y, delta, alpha, r=2, B=1000, N=500):
         yy = y[y_ind, :]
 
         SW_boot, _ = swd.distance(xx, yy, delta)
-        boot.append(SW_hat - SW_boot)
+        SW_boot = SW_boot.detach().numpy()
+        boot.append(SW_boot - SW_hat)
 
     q1 = np.quantile(boot, alpha / 2)
     q2 = np.quantile(boot, 1 - alpha / 2)

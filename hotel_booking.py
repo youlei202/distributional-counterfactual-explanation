@@ -125,32 +125,25 @@ def main():
     )
 
     logger.info(
-        "WD:", np.sqrt(explainer.wd.distance(y, y_target, delta=delta)[0].item())
+        f"WD: {np.sqrt(explainer.wd.distance(y, y_target, delta=delta)[0].item())}"
     )
     logger.info(
-        "WD Exact Interval:",
-        explainer.wd.distance_interval(y, y_target, delta=delta, alpha=alpha),
+        f"WD Exact Interval: {explainer.wd.distance_interval(y, y_target, delta=delta, alpha=alpha)}",
     )
     logger.info(
-        "WD Bootstrap Interval:", bootstrap_1d(y, y_target, delta=delta, alpha=alpha)
+        f"WD Bootstrap Interval: {bootstrap_1d(y, y_target, delta=delta, alpha=alpha)}"
     )
 
     explainer.optimize_without_chance_constraints(max_iter=20)
 
     logger.info(
-        "SWD:",
-        np.sqrt(
-            explainer.swd.distance(explainer.best_X, explainer.X_prime, delta)[0].item()
-        ),
+        f"SWD: {np.sqrt(explainer.swd.distance(explainer.best_X, explainer.X_prime, delta)[0].item())}",
     )
     logger.info(
-        "SWD Exact Interval:",
-        explainer.swd.distance_interval(
-            explainer.X, explainer.X_prime, delta, alpha=alpha
-        ),
+        f"SWD Exact Interval: {explainer.swd.distance_interval(explainer.X, explainer.X_prime, delta, alpha=alpha)}",
     )
     logger.info(
-        "SWD Bootstrap Interval:", bootstrap_sw(explainer.best_X, explainer.X_prime, delta=delta, alpha=alpha)
+        f"SWD Bootstrap Interval: {bootstrap_sw(explainer.best_X, explainer.X_prime, delta=delta, alpha=alpha)}",
     )
 
     factual_X = df[df_X.columns].loc[indice].copy()

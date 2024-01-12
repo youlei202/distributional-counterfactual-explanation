@@ -200,11 +200,11 @@ class DistributionalCounterfactualExplainer:
         U_1: float,
         U_2: float,
         max_iter: Optional[int] = 100,
+        tau=10,
         tol=1e-6,
         alpha=0.05,
     ):
         logger.info("Optimization started")
-        logger.info("Optimization (without chance constraints) started")
         past_Qs = [float("inf")] * 5  # Store the last 5 Q values for moving average
         for i in range(max_iter):
             self.swd.distance(X_s=self.X, X_t=self.X_prime, delta=self.delta)
@@ -222,7 +222,9 @@ class DistributionalCounterfactualExplainer:
             eta = self._get_eta_interval_narrowing()
 
             # Compute the gradients for self.X
-            self._update_X_grads(mu_list=self.swd.mu_list, nu=self.wd.nu, eta=eta)
+            self._update_X_grads(
+                mu_list=self.swd.mu_list, nu=self.wd.nu, eta=eta, tau=tau
+            )
 
             # Perform an optimization step
             self.optimizer.step()

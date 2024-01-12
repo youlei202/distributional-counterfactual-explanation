@@ -18,8 +18,10 @@ from utils.logger_config import setup_logger
 
 logger = setup_logger()
 
-read_data_path = "data/"
-dump_data_path = "data/hotel_booking/"
+absolute_path = "/zhome/b2/8/197929/GitHub/distributional-counterfactual-explanation"
+
+read_data_path = os.path.join(absolute_path, "data/hotel_booking")
+dump_data_path = os.path.join(absolute_path, "data/hotel_booking/")
 sample_num = 60
 delta = 0.25
 alpha = 0.10
@@ -101,7 +103,7 @@ def main():
         correct_predictions = (y_pred_tensor == y_test_tensor).float().sum()
         accuracy = correct_predictions / y_test_tensor.shape[0]
 
-    logger.Info(f"Accuracy = {accuracy.item()}")
+    logger.info(f"Accuracy = {accuracy.item()}")
 
     indice = (X_test.sample(sample_num)).index
     X = X_test.loc[indice].values
@@ -122,32 +124,32 @@ def main():
         n_proj=500,
     )
 
-    logger.Info(
+    logger.info(
         "WD:", np.sqrt(explainer.wd.distance(y, y_target, delta=delta)[0].item())
     )
-    logger.Info(
+    logger.info(
         "WD Exact Interval:",
         explainer.wd.distance_interval(y, y_target, delta=delta, alpha=alpha),
     )
-    logger.Info(
+    logger.info(
         "WD Bootstrap Interval:", bootstrap_1d(y, y_target, delta=delta, alpha=alpha)
     )
 
     explainer.optimize_without_chance_constraints(max_iter=20)
 
-    logger.Info(
+    logger.info(
         "SWD:",
         np.sqrt(
             explainer.swd.distance(explainer.best_X, explainer.X_prime, delta)[0].item()
         ),
     )
-    logger.Info(
+    logger.info(
         "SWD Exact Interval:",
         explainer.swd.distance_interval(
             explainer.X, explainer.X_prime, delta, alpha=alpha
         ),
     )
-    logger.Info(
+    logger.info(
         "SWD Bootstrap Interval:", bootstrap_sw(explainer.best_X, explainer.X_prime, delta=delta, alpha=alpha)
     )
 

@@ -15,23 +15,31 @@ class DistributionalCounterfactualExplainer:
     def __init__(
         self,
         model,
-        X,
+        df_X,
+        explain_columns,
         y_target,
         lr=0.1,
         init_eta=0.5,
         n_proj=50,
-        delta=0,
+        delta=0.1,
     ):
+        self.X = df_X.values
+        # Find indices of explain_columns in df_X
+        self.explain_indices = [df_X.columns.get_loc(col) for col in explain_columns]
+
         # Set the device (GPU if available, otherwise CPU)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        self.X = torch.from_numpy(self.X).float().to(self.device)
 
         # Move model to the appropriate device
         self.model = model.to(self.device)
 
         # Transfer data to the device
-        self.X_prime = torch.from_numpy(X).float().to(self.device)
+        self.X_prime = self.X[:, self.explain_indices].clone()
+
         noise = torch.randn_like(self.X_prime) * 0.01
-        self.X = (self.X_prime + noise).to(self.device)
+        self.X[:, self.explain_indices] = (self.X_prime + noise).to(self.device)
 
         self.X.requires_grad_(True).retain_grad()
         self.best_X = None
@@ -42,7 +50,7 @@ class DistributionalCounterfactualExplainer:
         self.y_prime = y_target.clone().to(self.device)
         self.best_y = None
 
-        self.swd = SlicedWassersteinDivergence(X.shape[1], n_proj=n_proj)
+        self.swd = SlicedWassersteinDivergence(self.X_prime.shape[1], n_proj=n_proj)
         self.wd = WassersteinDivergence()
 
         self.Q = torch.tensor(torch.inf, dtype=torch.float, device=self.device)
@@ -53,7 +61,7 @@ class DistributionalCounterfactualExplainer:
         self.delta = delta
 
     def _update_Q(self, mu_list, nu, eta):
-        n, m = self.X.shape[0], self.X_prime.shape[0]
+        n, m = self.X[:, self.explain_indices].shape[0], self.X_prime.shape[0]
 
         thetas = [
             torch.from_numpy(theta).float().to(self.device) for theta in self.swd.thetas
@@ -69,7 +77,7 @@ class DistributionalCounterfactualExplainer:
                     self.term1 += (
                         mu[i, j]
                         * (
-                            torch.dot(theta, self.X[i])
+                            torch.dot(theta, self.X[:, self.explain_indices][i])
                             - torch.dot(theta, self.X_prime[j])
                         )
                         ** 2
@@ -89,7 +97,7 @@ class DistributionalCounterfactualExplainer:
         self.Q = (1 - eta) * self.term1 + eta * self.term2
 
     def _update_X_grads(self, mu_list, nu, eta, tau):
-        n, m = self.X.shape[0], self.X_prime.shape[0]
+        n, m = self.X[:, self.explain_indices].shape[0], self.X_prime.shape[0]
         thetas = [
             torch.from_numpy(theta).float().to(self.device) for theta in self.swd.thetas
         ]
@@ -101,11 +109,14 @@ class DistributionalCounterfactualExplainer:
         # Ensure gradients are zeroed out before backward pass
         self.X.grad = None
         loss.backward()
-        model_grads = self.X.grad.clone()  # Store the gradients
+        model_grads = self.X.grad[
+            :, self.explain_indices
+        ].clone()  # Store the gradients
 
         # Compute the first term
         X_proj = torch.stack(
-            [torch.matmul(self.X, theta) for theta in thetas], dim=1
+            [torch.matmul(self.X[:, self.explain_indices], theta) for theta in thetas],
+            dim=1,
         )  # [n, num_thetas]
         X_prime_proj = torch.stack(
             [torch.matmul(self.X_prime, theta) for theta in thetas], dim=1
@@ -146,19 +157,20 @@ class DistributionalCounterfactualExplainer:
 
         self.Qx_grads = (1 - eta) * gradient_term1 + eta * gradient_term2
         # self.Qx_grads = gradient_term2
-        self.X.grad = self.Qx_grads * tau
+        self.X.grad.zero_()
+        self.X.grad[:, self.explain_indices] = self.Qx_grads * tau
 
     def __perform_SGD(self, past_Qs, eta, tau):
         # Reset the gradients
         self.optimizer.zero_grad()
 
-        # Compute the gradients for self.X
+        # Compute the gradients for self.X[:, self.explain_indices]
         self._update_X_grads(mu_list=self.swd.mu_list, nu=self.wd.nu, eta=eta, tau=tau)
 
         # Perform an optimization step
         self.optimizer.step()
 
-        # Update the Q value and y by the newly optimized X
+        # Update the Q value, X_all, and y by the newly optimized X
         self._update_Q(mu_list=self.swd.mu_list, nu=self.wd.nu, eta=eta)
         self.y = self.model(self.X)
 
@@ -185,7 +197,11 @@ class DistributionalCounterfactualExplainer:
         logger.info("Optimization (without chance constraints) started")
         past_Qs = [float("inf")] * 5  # Store the last 5 Q values for moving average
         for i in range(max_iter):
-            self.swd.distance(X_s=self.X, X_t=self.X_prime, delta=self.delta)
+            self.swd.distance(
+                X_s=self.X[:, self.explain_indices],
+                X_t=self.X_prime,
+                delta=self.delta,
+            )
             self.wd.distance(y_s=self.y, y_t=self.y_prime, delta=self.delta)
 
             avg_Q_change = self.__perform_SGD(past_Qs, eta=eta, tau=tau)
@@ -216,13 +232,20 @@ class DistributionalCounterfactualExplainer:
         logger.info("Optimization started")
         past_Qs = [float("inf")] * 5  # Store the last 5 Q values for moving average
         for i in range(max_iter):
-            self.swd.distance(X_s=self.X, X_t=self.X_prime, delta=self.delta)
+            self.swd.distance(
+                X_s=self.X[:, self.explain_indices],
+                X_t=self.X_prime,
+                delta=self.delta,
+            )
             self.wd.distance(y_s=self.y, y_t=self.y_prime, delta=self.delta)
             _, Qv_upper = self.wd.distance_interval(
                 self.y, self.y_prime, delta=self.delta, alpha=alpha
             )
             _, Qu_upper = self.swd.distance_interval(
-                self.X, self.X_prime, delta=self.delta, alpha=alpha
+                self.X[:, self.explain_indices],
+                self.X_prime,
+                delta=self.delta,
+                alpha=alpha,
             )
 
             (

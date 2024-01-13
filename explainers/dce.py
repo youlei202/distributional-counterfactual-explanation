@@ -148,9 +148,36 @@ class DistributionalCounterfactualExplainer:
         # self.Qx_grads = gradient_term2
         self.X.grad = self.Qx_grads * tau
 
+    def __perform_SGD(self, past_Qs, eta, tau):
+        # Reset the gradients
+        self.optimizer.zero_grad()
+
+        # Compute the gradients for self.X
+        self._update_X_grads(mu_list=self.swd.mu_list, nu=self.wd.nu, eta=eta, tau=tau)
+
+        # Perform an optimization step
+        self.optimizer.step()
+
+        # Update the Q value and y by the newly optimized X
+        self._update_Q(mu_list=self.swd.mu_list, nu=self.wd.nu, eta=eta)
+        self.y = self.model(self.X)
+
+        # logger.info(f"\t  Qx_grads = {self.Qx_grads}")
+
+        if self.Q < self.best_Q:
+            self.best_Q = self.Q.clone().detach()
+            self.best_X = self.X.clone().detach()
+            self.best_y = self.y.clone().detach()
+
+        # Check for convergence using moving average of past Q changes
+        past_Qs.pop(0)
+        past_Qs.append(self.Q.item())
+        avg_Q_change = (past_Qs[-1] - past_Qs[0]) / 5
+        return avg_Q_change
+
     def optimize_without_chance_constraints(
         self,
-        eta=0.99,
+        eta=0.9,
         max_iter: Optional[int] = 100,
         tau=10,
         tol=1e-6,
@@ -161,32 +188,8 @@ class DistributionalCounterfactualExplainer:
             self.swd.distance(X_s=self.X, X_t=self.X_prime, delta=self.delta)
             self.wd.distance(y_s=self.y, y_t=self.y_prime, delta=self.delta)
 
-            # Reset the gradients
-            self.optimizer.zero_grad()
+            avg_Q_change = self.__perform_SGD(past_Qs, eta=eta, tau=tau)
 
-            # Compute the gradients for self.X
-            self._update_X_grads(
-                mu_list=self.swd.mu_list, nu=self.wd.nu, eta=eta, tau=tau
-            )
-
-            # Perform an optimization step
-            self.optimizer.step()
-
-            # Update the Q value and y by the newly optimized X
-            self._update_Q(mu_list=self.swd.mu_list, nu=self.wd.nu, eta=eta)
-            self.y = self.model(self.X)
-
-            # logger.info(f"\t  Qx_grads = {self.Qx_grads}")
-
-            if self.Q < self.best_Q:
-                self.best_Q = self.Q.clone().detach()
-                self.best_X = self.X.clone().detach()
-                self.best_y = self.y.clone().detach()
-
-            # Check for convergence using moving average of past Q changes
-            past_Qs.pop(0)
-            past_Qs.append(self.Q.item())
-            avg_Q_change = (past_Qs[-1] - past_Qs[0]) / 5
             if abs(avg_Q_change) < tol:
                 logger.info(f"Converged at iteration {i+1}")
                 break
@@ -199,7 +202,7 @@ class DistributionalCounterfactualExplainer:
         self,
         U_1: float,
         U_2: float,
-        l=0,
+        l=0.2,
         r=1,
         kappa=0.05,
         max_iter: Optional[int] = 100,
@@ -222,9 +225,6 @@ class DistributionalCounterfactualExplainer:
                 self.X, self.X_prime, delta=self.delta, alpha=alpha
             )
 
-            # Reset the gradients
-            self.optimizer.zero_grad()
-
             (
                 eta,
                 self.interval_left,
@@ -242,29 +242,8 @@ class DistributionalCounterfactualExplainer:
             logger.info(f"U_1-Qu_upper={U_1-Qu_upper}, U_2-Qv_upper={U_2-Qv_upper}")
             logger.info(f"eta={eta}, l={self.interval_left}, r={self.interval_right}")
 
-            # Compute the gradients for self.X
-            self._update_X_grads(
-                mu_list=self.swd.mu_list, nu=self.wd.nu, eta=eta, tau=tau
-            )
+            avg_Q_change = self.__perform_SGD(past_Qs, eta=eta, tau=tau)
 
-            # Perform an optimization step
-            self.optimizer.step()
-
-            # Update the Q value and y by the newly optimized X
-            self._update_Q(mu_list=self.swd.mu_list, nu=self.wd.nu, eta=eta)
-            self.y = self.model(self.X)
-
-            # logger.info(f"\t  Qx_grads = {self.Qx_grads}")
-
-            if self.Q < self.best_Q:
-                self.best_Q = self.Q.clone().detach()
-                self.best_X = self.X.clone().detach()
-                self.best_y = self.y.clone().detach()
-
-            # Check for convergence using moving average of past Q changes
-            past_Qs.pop(0)
-            past_Qs.append(self.Q.item())
-            avg_Q_change = (past_Qs[-1] - past_Qs[0]) / 5
             if abs(avg_Q_change) < tol:
                 logger.info(f"Converged at iteration {i+1}")
                 break

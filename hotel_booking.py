@@ -22,20 +22,29 @@ absolute_path = "/zhome/b2/8/197929/GitHub/distributional-counterfactual-explana
 
 read_data_path = os.path.join(absolute_path, "data/hotel_booking")
 dump_data_path = os.path.join(absolute_path, "data/hotel_booking/")
+csv_file = "hotel_bookings.csv"
+target_name = "is_canceled"
+
+# Parameters
 sample_num = 60
 delta = 0.25
 alpha = 0.10
+U_1 = 0.5
+U_2 = 0.5
+interval_left = 0.2
+interval_right = 1.0
+
+y_target = torch.distributions.beta.Beta(0.1, 0.9).sample((sample_num,))
 
 
 def main():
     # Load dataset and create a copy for manipulation
-    df_ = pd.read_csv(os.path.join(read_data_path, "hotel_bookings.csv"))
+    df_ = pd.read_csv(os.path.join(read_data_path, csv_file))
     df = df_.copy()
 
     logger.info("Dataset loaded.")
 
     # Define target column
-    target_name = "is_canceled"
     target = df[target_name]
 
     # Initialize a label encoder and a dictionary to store label mappings
@@ -108,7 +117,6 @@ def main():
     indice = (X_test.sample(sample_num)).index
     X = X_test.loc[indice].values
     y = model(torch.FloatTensor(X))
-    y_target = torch.distributions.beta.Beta(0.1, 0.9).sample((sample_num,))
     y_true = y_test.loc[indice]
 
     # Counterfactual explanation
@@ -134,7 +142,9 @@ def main():
         f"WD Bootstrap Interval: {bootstrap_1d(y, y_target, delta=delta, alpha=alpha)}"
     )
 
-    explainer.optimize_without_chance_constraints(max_iter=20)
+    explainer.optimize(
+        U_1=U_1, U_2=U_2, l=interval_left, r=interval_right, max_iter=20, tau=1e3
+    )
 
     logger.info(
         f"SWD: {np.sqrt(explainer.swd.distance(explainer.best_X, explainer.X_prime, delta)[0].item())}",

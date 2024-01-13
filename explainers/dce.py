@@ -6,6 +6,7 @@ import numpy as np
 import torch.optim as optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from utils.logger_config import setup_logger
+import math
 
 logger = setup_logger()
 
@@ -149,6 +150,7 @@ class DistributionalCounterfactualExplainer:
 
     def optimize_without_chance_constraints(
         self,
+        eta=0.99,
         max_iter: Optional[int] = 100,
         tau=10,
         tol=1e-6,
@@ -161,8 +163,6 @@ class DistributionalCounterfactualExplainer:
 
             # Reset the gradients
             self.optimizer.zero_grad()
-
-            eta = self._get_eta_interval_narrowing()
 
             # Compute the gradients for self.X
             self._update_X_grads(
@@ -199,11 +199,17 @@ class DistributionalCounterfactualExplainer:
         self,
         U_1: float,
         U_2: float,
+        l=0,
+        r=1,
+        kappa=0.05,
         max_iter: Optional[int] = 100,
         tau=10,
         tol=1e-6,
         alpha=0.05,
     ):
+        self.interval_left = l
+        self.interval_right = r
+
         logger.info("Optimization started")
         past_Qs = [float("inf")] * 5  # Store the last 5 Q values for moving average
         for i in range(max_iter):
@@ -219,7 +225,22 @@ class DistributionalCounterfactualExplainer:
             # Reset the gradients
             self.optimizer.zero_grad()
 
-            eta = self._get_eta_interval_narrowing()
+            (
+                eta,
+                self.interval_left,
+                self.interval_right,
+            ) = self._get_eta_interval_narrowing(
+                U_1=U_1,
+                U_2=U_2,
+                Qu_upper=Qu_upper,
+                Qv_upper=Qv_upper,
+                l=self.interval_left,
+                r=self.interval_right,
+                kappa=kappa,
+            )
+
+            logger.info(f"U_1-Qu_upper={U_1-Qu_upper}, U_2-Qv_upper={U_2-Qv_upper}")
+            logger.info(f"eta={eta}, l={self.interval_left}, r={self.interval_right}")
 
             # Compute the gradients for self.X
             self._update_X_grads(
@@ -255,5 +276,50 @@ class DistributionalCounterfactualExplainer:
     def _get_eta_set_shrinking(self):
         return 0.99
 
-    def _get_eta_interval_narrowing(self):
-        return 0.99
+    def _get_eta_interval_narrowing(
+        self, U_1, U_2, Qu_upper, Qv_upper, l=0, r=1, kappa=0.05
+    ):
+        """
+        Implements the interval narrowing algorithm.
+
+        Parameters:
+        Qv_upper, Qu_upper (float): Upper confidence limits.
+        l, r (float): Current lower and upper bounds of the interval.
+        kappa (float): Contraction factor for the interval.
+
+        Returns:
+        eta (float): The point in the interval [l, r] that maximizes the objective function.
+        l, r (float): Updated lower and upper bounds of the interval.
+        """
+
+        if not math.isfinite(Qv_upper):
+            return r, l, r
+
+        if not math.isfinite(Qu_upper):
+            return l, l, r
+
+        eta = self.__choose_eta_within_interval(
+            a=U_1 - Qu_upper, b=U_2 - Qv_upper, l=l, r=r
+        )
+
+        # Narrow the interval
+        if eta > (l + r) / 2:
+            l = l + kappa * (r - l)
+        else:
+            r = r - kappa * (r - l)
+        return eta, l, r
+
+    def __choose_eta_within_interval(self, a, b, l, r):
+        if (a < 0 and b >= 0) or (a >= 0 and b < 0):
+            return l if a < 0 else r
+        else:
+            # For a, b both negative or both positive
+            if a < 0 and b < 0:
+                # Both negative: more weight to the more negative
+                eta_proportion = b / (a + b)
+            else:
+                # Both positive: more weight to the less positive
+                eta_proportion = a / (a + b)
+
+            # Scale eta to be within the range [l, r]
+            return l + eta_proportion * (r - l)

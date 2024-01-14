@@ -54,11 +54,12 @@ class DistributionalCounterfactualExplainer:
         self.wd = WassersteinDivergence()
 
         self.Q = torch.tensor(torch.inf, dtype=torch.float, device=self.device)
-        self.best_Q = self.Q
+        self.best_gap = np.inf
 
         self.init_eta = torch.tensor(init_eta, dtype=torch.float, device=self.device)
 
         self.delta = delta
+        self.found_feasible_solution = False
 
     def _update_Q(self, mu_list, nu, eta):
         n, m = self.X[:, self.explain_indices].shape[0], self.X_prime.shape[0]
@@ -176,11 +177,6 @@ class DistributionalCounterfactualExplainer:
 
         # logger.info(f"\t  Qx_grads = {self.Qx_grads}")
 
-        if self.Q < self.best_Q:
-            self.best_Q = self.Q.clone().detach()
-            self.best_X = self.X.clone().detach()
-            self.best_y = self.y.clone().detach()
-
         # Check for convergence using moving average of past Q changes
         past_Qs.pop(0)
         past_Qs.append(self.Q.item())
@@ -238,10 +234,10 @@ class DistributionalCounterfactualExplainer:
                 delta=self.delta,
             )
             self.wd.distance(y_s=self.y, y_t=self.y_prime, delta=self.delta)
-            _, Qv_upper = self.wd.distance_interval(
+            _, self.Qv_upper = self.wd.distance_interval(
                 self.y, self.y_prime, delta=self.delta, alpha=alpha
             )
-            _, Qu_upper = self.swd.distance_interval(
+            _, self.Qu_upper = self.swd.distance_interval(
                 self.X[:, self.explain_indices],
                 self.X_prime,
                 delta=self.delta,
@@ -255,25 +251,38 @@ class DistributionalCounterfactualExplainer:
             ) = self._get_eta_interval_narrowing(
                 U_1=U_1,
                 U_2=U_2,
-                Qu_upper=Qu_upper,
-                Qv_upper=Qv_upper,
+                Qu_upper=self.Qu_upper,
+                Qv_upper=self.Qv_upper,
                 l=self.interval_left,
                 r=self.interval_right,
                 kappa=kappa,
             )
 
-            logger.info(f"U_1-Qu_upper={U_1-Qu_upper}, U_2-Qv_upper={U_2-Qv_upper}")
+            logger.info(
+                f"U_1-Qu_upper={U_1-self.Qu_upper}, U_2-Qv_upper={U_2-self.Qv_upper}"
+            )
             logger.info(f"eta={eta}, l={self.interval_left}, r={self.interval_right}")
 
             avg_Q_change = self.__perform_SGD(past_Qs, eta=eta, tau=tau)
 
-            if abs(avg_Q_change) < tol:
-                logger.info(f"Converged at iteration {i+1}")
-                break
+            if (U_1 - self.Qu_upper) < 0 or (U_2 - self.Qv_upper) < 0:
+                gap = np.inf
+            else:
+                gap = (U_1 - self.Qu_upper) + (U_2 - self.Qv_upper)
+
+            if gap < self.best_gap:
+                self.best_gap = gap
+                self.best_X = self.X.clone().detach()
+                self.best_y = self.y.clone().detach()
+                self.found_feasible_solution = True
 
             logger.info(
                 f"Iter {i+1}: Q = {self.Q}, term1 = {self.term1}, term2 = {self.term2}"
             )
+
+            if abs(avg_Q_change) < tol:
+                logger.info(f"Converged at iteration {i+1}")
+                break
 
     def _get_eta_set_shrinking(self):
         return 0.99

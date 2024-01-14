@@ -27,6 +27,8 @@ class DistributionalCounterfactualExplainer:
         # Find indices of explain_columns in df_X
         self.explain_indices = [df_X.columns.get_loc(col) for col in explain_columns]
 
+        self.explain_columns = explain_columns
+
         # Set the device (GPU if available, otherwise CPU)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -36,10 +38,10 @@ class DistributionalCounterfactualExplainer:
         self.model = model.to(self.device)
 
         # Transfer data to the device
-        self.X_prime = self.X[:, self.explain_indices].clone()
+        self.X_prime = self.X.clone()
 
-        noise = torch.randn_like(self.X_prime) * 0.01
-        self.X[:, self.explain_indices] = (self.X_prime + noise).to(self.device)
+        noise = torch.randn_like(self.X_prime[:, self.explain_indices]) * 0.01
+        self.X[:, self.explain_indices] = (self.X_prime[:, self.explain_indices] + noise).to(self.device)
 
         self.X.requires_grad_(True).retain_grad()
         self.best_X = None
@@ -50,7 +52,7 @@ class DistributionalCounterfactualExplainer:
         self.y_prime = y_target.clone().to(self.device)
         self.best_y = None
 
-        self.swd = SlicedWassersteinDivergence(self.X_prime.shape[1], n_proj=n_proj)
+        self.swd = SlicedWassersteinDivergence(self.X_prime[:, self.explain_indices].shape[1], n_proj=n_proj)
         self.wd = WassersteinDivergence()
 
         self.Q = torch.tensor(torch.inf, dtype=torch.float, device=self.device)
@@ -62,7 +64,7 @@ class DistributionalCounterfactualExplainer:
         self.found_feasible_solution = False
 
     def _update_Q(self, mu_list, nu, eta):
-        n, m = self.X[:, self.explain_indices].shape[0], self.X_prime.shape[0]
+        n, m = self.X[:, self.explain_indices].shape[0], self.X_prime[:, self.explain_indices].shape[0]
 
         thetas = [
             torch.from_numpy(theta).float().to(self.device) for theta in self.swd.thetas
@@ -79,7 +81,7 @@ class DistributionalCounterfactualExplainer:
                         mu[i, j]
                         * (
                             torch.dot(theta, self.X[:, self.explain_indices][i])
-                            - torch.dot(theta, self.X_prime[j])
+                            - torch.dot(theta, self.X_prime[:, self.explain_indices][j])
                         )
                         ** 2
                     )
@@ -98,7 +100,7 @@ class DistributionalCounterfactualExplainer:
         self.Q = (1 - eta) * self.term1 + eta * self.term2
 
     def _update_X_grads(self, mu_list, nu, eta, tau):
-        n, m = self.X[:, self.explain_indices].shape[0], self.X_prime.shape[0]
+        n, m = self.X[:, self.explain_indices].shape[0], self.X_prime[:, self.explain_indices].shape[0]
         thetas = [
             torch.from_numpy(theta).float().to(self.device) for theta in self.swd.thetas
         ]
@@ -120,7 +122,7 @@ class DistributionalCounterfactualExplainer:
             dim=1,
         )  # [n, num_thetas]
         X_prime_proj = torch.stack(
-            [torch.matmul(self.X_prime, theta) for theta in thetas], dim=1
+            [torch.matmul(self.X_prime[:, self.explain_indices], theta) for theta in thetas], dim=1
         )  # [m, num_thetas]
 
         # Use broadcasting to compute differences for all i, j
@@ -195,7 +197,7 @@ class DistributionalCounterfactualExplainer:
         for i in range(max_iter):
             self.swd.distance(
                 X_s=self.X[:, self.explain_indices],
-                X_t=self.X_prime,
+                X_t=self.X_prime[:, self.explain_indices],
                 delta=self.delta,
             )
             self.wd.distance(y_s=self.y, y_t=self.y_prime, delta=self.delta)
@@ -230,7 +232,7 @@ class DistributionalCounterfactualExplainer:
         for i in range(max_iter):
             self.swd.distance(
                 X_s=self.X[:, self.explain_indices],
-                X_t=self.X_prime,
+                X_t=self.X_prime[:, self.explain_indices],
                 delta=self.delta,
             )
             self.wd.distance(y_s=self.y, y_t=self.y_prime, delta=self.delta)
@@ -239,7 +241,7 @@ class DistributionalCounterfactualExplainer:
             )
             _, self.Qu_upper = self.swd.distance_interval(
                 self.X[:, self.explain_indices],
-                self.X_prime,
+                self.X_prime[:, self.explain_indices],
                 delta=self.delta,
                 alpha=alpha,
             )

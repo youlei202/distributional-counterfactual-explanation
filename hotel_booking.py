@@ -27,13 +27,17 @@ target_name = "is_canceled"
 
 # Parameters
 sample_num = 100
-delta = 0.1
+delta = 0.15
 alpha = 0.05
 U_1 = 0.5
 U_2 = 0.3
 n_proj = 10
 interval_left = 0.2
 interval_right = 1.0
+kappa = 0.001
+
+max_iter = 100
+tau = 1e3
 
 # Define features for model training
 features = [
@@ -181,22 +185,28 @@ def main():
     )
 
     explainer.optimize(
-        U_1=U_1, U_2=U_2, l=interval_left, r=interval_right, max_iter=20, tau=1e3
+        U_1=U_1, U_2=U_2, l=interval_left, r=interval_right, kappa=kappa, max_iter=max_iter, tau=tau
     )
+    logger.info(f"Feasible solution found: {explainer.found_feasible_solution}")
+
+    if explainer.best_X is not None:
+        which_X = explainer.best_X
+    else:
+        which_X = explainer.X
 
     logger.info(
-        f"SWD: {np.sqrt(explainer.swd.distance(explainer.best_X, explainer.X_prime, delta)[0].item())}",
+        f"SWD: {np.sqrt(explainer.swd.distance(which_X[:,explainer.explain_indices], explainer.X_prime[:,explainer.explain_indices], delta)[0].item())}",
     )
     logger.info(
-        f"SWD Exact Interval: {explainer.swd.distance_interval(explainer.X, explainer.X_prime, delta, alpha=alpha)}",
+        f"SWD Exact Interval: {explainer.swd.distance_interval(which_X[:,explainer.explain_indices], explainer.X_prime[:,explainer.explain_indices], delta, alpha=alpha)}",
     )
     logger.info(
-        f"SWD Bootstrap Interval: {bootstrap_sw(explainer.best_X, explainer.X_prime, delta=delta, alpha=alpha)}",
+        f"SWD Bootstrap Interval: {bootstrap_sw(which_X[:,explainer.explain_indices], explainer.X_prime[:,explainer.explain_indices], delta=delta, alpha=alpha, N=n_proj)}",
     )
 
     factual_X = df[df_X.columns].loc[indice].copy()
     counterfactual_X = pd.DataFrame(
-        explainer.best_X.detach().numpy() * std[df_X.columns].values
+        which_X.detach().numpy() * std[df_X.columns].values
         + mean[df_X.columns].values,
         columns=df_X.columns,
     )

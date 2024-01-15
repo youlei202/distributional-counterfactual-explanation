@@ -36,4 +36,4 @@ module load scipy/1.7.3-python-3.9.11
 module load python3/3.9.11
 module load cuda/11.6
 
-python3 experiment/hotel_booking.py
+python3 -m experiments.hotel_booking

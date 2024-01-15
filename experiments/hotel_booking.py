@@ -20,10 +20,10 @@ logger = setup_logger()
 
 absolute_path = "/zhome/b2/8/197929/GitHub/distributional-counterfactual-explanation"
 
-read_data_path = os.path.join(absolute_path, "data/german_credit")
-dump_data_path = os.path.join(absolute_path, "data/german_credit/")
-csv_file = "german_credit_data.csv"
-target_name = "Risk"
+read_data_path = os.path.join(absolute_path, "data/hotel_booking")
+dump_data_path = os.path.join(absolute_path, "data/hotel_booking/")
+csv_file = "hotel_bookings.csv"
+target_name = "is_canceled"
 
 # Parameters
 sample_num = 100
@@ -32,7 +32,7 @@ alpha = 0.05
 U_1 = 0.5
 U_2 = 0.3
 n_proj = 10
-interval_left = 0.2
+interval_left = 0
 interval_right = 1.0
 kappa = 0.001
 
@@ -41,27 +41,43 @@ tau = 1e3
 
 # Define features for model training
 features = [
-    "Age",
-    "Sex",
-    "Job",
-    "Housing",
-    "Saving accounts",
-    "Checking account",
-    "Credit amount",
-    "Duration",
-    "Purpose",
+    "hotel",
+    "lead_time",
+    "arrival_date_year",
+    "arrival_date_month",
+    "arrival_date_week_number",
+    "arrival_date_day_of_month",
+    "stays_in_weekend_nights",
+    "stays_in_week_nights",
+    "adults",
+    "children",
+    "babies",
+    "meal",
+    "country",
+    "market_segment",
+    "distribution_channel",
+    "is_repeated_guest",
+    "previous_cancellations",
+    "previous_bookings_not_canceled",
+    "reserved_room_type",
+    "assigned_room_type",
+    "booking_changes",
+    "deposit_type",
+    "agent",
+    "company",
+    "days_in_waiting_list",
+    "customer_type",
+    "adr",
+    "required_car_parking_spaces",
+    "total_of_special_requests",
 ]
 
 explain_columns = [
-    "Age",
-    "Sex",
-    "Job",
-    "Housing",
-    "Saving accounts",
-    "Checking account",
-    "Credit amount",
-    "Duration",
-    "Purpose",
+    "lead_time",
+    "booking_changes",
+    "stays_in_weekend_nights",
+    "stays_in_week_nights",
+    "days_in_waiting_list",
 ]
 
 y_target = torch.distributions.beta.Beta(0.1, 0.9).sample((sample_num,))
@@ -75,8 +91,7 @@ def main():
     logger.info("Dataset loaded.")
 
     # Define target column
-    target = df[target_name].replace({"good": 0, "bad": 1})
-    df["Risk"] = target
+    target = df[target_name]
 
     # Initialize a label encoder and a dictionary to store label mappings
     label_encoder = LabelEncoder()
@@ -84,7 +99,7 @@ def main():
 
     # Convert categorical columns to numerical representations using label encoding
     for column in df.columns:
-        if column is not target_name and df[column].dtype == "object":
+        if df[column].dtype == "object":
             df[column] = df[column].fillna("Unknown")  # Handle missing values
             df[column] = label_encoder.fit_transform(df[column])
             label_mappings[column] = dict(
@@ -170,13 +185,7 @@ def main():
     )
 
     explainer.optimize(
-        U_1=U_1,
-        U_2=U_2,
-        l=interval_left,
-        r=interval_right,
-        kappa=kappa,
-        max_iter=max_iter,
-        tau=tau,
+        U_1=U_1, U_2=U_2, l=interval_left, r=interval_right, kappa=kappa, max_iter=max_iter, tau=tau
     )
     logger.info(f"Feasible solution found: {explainer.found_feasible_solution}")
 
@@ -192,12 +201,13 @@ def main():
         f"SWD Exact Interval: {explainer.swd.distance_interval(which_X[:,explainer.explain_indices], explainer.X_prime[:,explainer.explain_indices], delta, alpha=alpha)}",
     )
     logger.info(
-        f"SWD Bootstrap Interval: {bootstrap_sw(which_X[:,explainer.explain_indices], explainer.X_prime[:,explainer.explain_indices], delta=delta, alpha=alpha, N=n_proj)}",
+        f"SWD Bootstrap Interval: {bootstrap_sw(which_X[:,explainer.explain_indices], explainer.X_prime[:,explainer.explain_indices], delta=delta, alpha=alpha, swd=explainer.swd)}",
     )
 
     factual_X = df[df_X.columns].loc[indice].copy()
     counterfactual_X = pd.DataFrame(
-        which_X.detach().numpy() * std[df_X.columns].values + mean[df_X.columns].values,
+        which_X.detach().numpy() * std[df_X.columns].values
+        + mean[df_X.columns].values,
         columns=df_X.columns,
     )
 
@@ -229,6 +239,16 @@ def main():
     counterfactual_X[target_name] = counterfactual_y
     factual_X[target_name] = factual_y
 
+    # Now, reverse the label encoding using the label_mappings
+    for dft in [factual_X, counterfactual_X]:
+        for column, mapping in label_mappings.items():
+            if column in dft.columns:
+                # Invert the label mapping dictionary
+                inv_mapping = {v: k for k, v in mapping.items()}
+                # Map the encoded labels back to the original strings
+                dft[column] = dft[column].map(inv_mapping)
+
+
     factual_X.to_csv(os.path.join(dump_data_path, "factual.csv"), index=False)
     counterfactual_X.to_csv(
         os.path.join(dump_data_path, "counterfactual.csv"), index=False
@@ -239,5 +259,5 @@ def main():
 
 
 if __name__ == "__main__":
-    logger.info("German credit analysis started")
+    logger.info("Hotel booking analysis started")
     main()

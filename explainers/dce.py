@@ -41,7 +41,9 @@ class DistributionalCounterfactualExplainer:
         self.X_prime = self.X.clone()
 
         noise = torch.randn_like(self.X_prime[:, self.explain_indices]) * 0.01
-        self.X[:, self.explain_indices] = (self.X_prime[:, self.explain_indices] + noise).to(self.device)
+        self.X[:, self.explain_indices] = (
+            self.X_prime[:, self.explain_indices] + noise
+        ).to(self.device)
 
         self.X.requires_grad_(True).retain_grad()
         self.best_X = None
@@ -52,7 +54,9 @@ class DistributionalCounterfactualExplainer:
         self.y_prime = y_target.clone().to(self.device)
         self.best_y = None
 
-        self.swd = SlicedWassersteinDivergence(self.X_prime[:, self.explain_indices].shape[1], n_proj=n_proj)
+        self.swd = SlicedWassersteinDivergence(
+            self.X_prime[:, self.explain_indices].shape[1], n_proj=n_proj
+        )
         self.wd = WassersteinDivergence()
 
         self.Q = torch.tensor(torch.inf, dtype=torch.float, device=self.device)
@@ -64,7 +68,10 @@ class DistributionalCounterfactualExplainer:
         self.found_feasible_solution = False
 
     def _update_Q(self, mu_list, nu, eta):
-        n, m = self.X[:, self.explain_indices].shape[0], self.X_prime[:, self.explain_indices].shape[0]
+        n, m = (
+            self.X[:, self.explain_indices].shape[0],
+            self.X_prime[:, self.explain_indices].shape[0],
+        )
 
         thetas = [
             torch.from_numpy(theta).float().to(self.device) for theta in self.swd.thetas
@@ -100,7 +107,10 @@ class DistributionalCounterfactualExplainer:
         self.Q = (1 - eta) * self.term1 + eta * self.term2
 
     def _update_X_grads(self, mu_list, nu, eta, tau):
-        n, m = self.X[:, self.explain_indices].shape[0], self.X_prime[:, self.explain_indices].shape[0]
+        n, m = (
+            self.X[:, self.explain_indices].shape[0],
+            self.X_prime[:, self.explain_indices].shape[0],
+        )
         thetas = [
             torch.from_numpy(theta).float().to(self.device) for theta in self.swd.thetas
         ]
@@ -122,7 +132,11 @@ class DistributionalCounterfactualExplainer:
             dim=1,
         )  # [n, num_thetas]
         X_prime_proj = torch.stack(
-            [torch.matmul(self.X_prime[:, self.explain_indices], theta) for theta in thetas], dim=1
+            [
+                torch.matmul(self.X_prime[:, self.explain_indices], theta)
+                for theta in thetas
+            ],
+            dim=1,
         )  # [m, num_thetas]
 
         # Use broadcasting to compute differences for all i, j
@@ -204,13 +218,16 @@ class DistributionalCounterfactualExplainer:
 
             avg_Q_change = self.__perform_SGD(past_Qs, eta=eta, tau=tau)
 
+            logger.info(
+                f"Iter {i+1}: Q = {self.Q}, term1 = {self.term1}, term2 = {self.term2}"
+            )
+
             if abs(avg_Q_change) < tol:
                 logger.info(f"Converged at iteration {i+1}")
                 break
 
-            logger.info(
-                f"Iter {i+1}: Q = {self.Q}, term1 = {self.term1}, term2 = {self.term2}"
-            )
+        self.best_X = self.X.clone().detach()
+        self.best_y = self.y.clone().detach()
 
     def optimize(
         self,
@@ -286,6 +303,11 @@ class DistributionalCounterfactualExplainer:
                 logger.info(f"Converged at iteration {i+1}")
                 break
 
+        if not self.found_feasible_solution:
+            self.best_gap = gap
+            self.best_X = self.X.clone().detach()
+            self.best_y = self.y.clone().detach()
+
     def _get_eta_set_shrinking(self):
         return 0.99
 
@@ -306,10 +328,10 @@ class DistributionalCounterfactualExplainer:
         """
 
         if not math.isfinite(Qv_upper):
-            return r, l, r
+            return l, l, r
 
         if not math.isfinite(Qu_upper):
-            return l, l, r
+            return r, l, r
 
         eta = self.__choose_eta_within_interval(
             a=U_1 - Qu_upper, b=U_2 - Qv_upper, l=l, r=r

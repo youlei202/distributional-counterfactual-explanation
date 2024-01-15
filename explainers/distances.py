@@ -149,7 +149,7 @@ class SlicedWassersteinDivergence:
         bootstrap=True,
     ):
         if bootstrap:
-            return bootstrap_sw(X_s, X_t, delta=delta, alpha=alpha, N=self.n_proj)
+            return bootstrap_sw(X_s, X_t, delta=delta, alpha=alpha, swd=self)
         else:
             N = len(self.thetas)
             low = []
@@ -299,13 +299,12 @@ def bootstrap_1d(x, y, delta, alpha, r=2, B=200):
     return np.power(Wlower, 1 / r), np.power(Wupper, 1 / r)
 
 
-def bootstrap_sw(x, y, delta, alpha, N, r=2, B=200):
+def bootstrap_sw(x, y, delta, alpha, swd, r=2, B=200):
     x = torch.tensor(x, dtype=torch.float32)
     y = torch.tensor(y, dtype=torch.float32)
 
     n, m, d = x.shape[0], y.shape[0], x.shape[1]
 
-    swd = SlicedWassersteinDivergence(dim=d, n_proj=N)
     SW_hat, _ = swd.distance(x, y, delta)
     SW_hat = SW_hat.detach().numpy()
 

@@ -233,13 +233,13 @@ class DistributionalCounterfactualExplainer:
         self,
         U_1: float,
         U_2: float,
+        alpha=0.05,
         l=0.2,
         r=1,
         kappa=0.05,
         max_iter: Optional[int] = 100,
         tau=10,
         tol=1e-6,
-        alpha=0.05,
     ):
         self.interval_left = l
         self.interval_right = r

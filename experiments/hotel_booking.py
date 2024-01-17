@@ -7,13 +7,13 @@ from sklearn.model_selection import train_test_split
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from sklearn.preprocessing import LabelEncoder
 from models.mlp import BlackBoxModel
 import pickle
 import os
 from explainers.dce import DistributionalCounterfactualExplainer
 from explainers.distances import bootstrap_1d, bootstrap_sw
 from utils.logger_config import setup_logger
+from utils.data_processing import *
 
 
 logger = setup_logger()
@@ -90,27 +90,9 @@ def main():
 
     logger.info("Dataset loaded.")
 
-    # Define target column
-    target = df[target_name]
-
-    # Initialize a label encoder and a dictionary to store label mappings
-    label_encoder = LabelEncoder()
-    label_mappings = {}
-
-    # Convert categorical columns to numerical representations using label encoding
-    for column in df.columns:
-        if df[column].dtype == "object":
-            df[column] = df[column].fillna("Unknown")  # Handle missing values
-            df[column] = label_encoder.fit_transform(df[column])
-            label_mappings[column] = dict(
-                zip(label_encoder.classes_, range(len(label_encoder.classes_)))
-            )
-
-    # Impute missing values in numerical columns with their median
-    for column in df.columns:
-        if df[column].isna().any():
-            median_val = df[column].median()
-            df[column].fillna(median_val, inplace=True)
+    df, label_mappings = feature_encoding(
+        df=df, target_name="is_canceled", target_encode_dict={}
+    )
 
     logger.info("Data preprocessing done.")
 
@@ -185,7 +167,13 @@ def main():
     )
 
     explainer.optimize(
-        U_1=U_1, U_2=U_2, l=interval_left, r=interval_right, kappa=kappa, max_iter=max_iter, tau=tau
+        U_1=U_1,
+        U_2=U_2,
+        l=interval_left,
+        r=interval_right,
+        kappa=kappa,
+        max_iter=max_iter,
+        tau=tau,
     )
     logger.info(f"Feasible solution found: {explainer.found_feasible_solution}")
 
@@ -206,8 +194,7 @@ def main():
 
     factual_X = df[df_X.columns].loc[indice].copy()
     counterfactual_X = pd.DataFrame(
-        which_X.detach().numpy() * std[df_X.columns].values
-        + mean[df_X.columns].values,
+        which_X.detach().numpy() * std[df_X.columns].values + mean[df_X.columns].values,
         columns=df_X.columns,
     )
 
@@ -247,7 +234,6 @@ def main():
                 inv_mapping = {v: k for k, v in mapping.items()}
                 # Map the encoded labels back to the original strings
                 dft[column] = dft[column].map(inv_mapping)
-
 
     factual_X.to_csv(os.path.join(dump_data_path, "factual.csv"), index=False)
     counterfactual_X.to_csv(

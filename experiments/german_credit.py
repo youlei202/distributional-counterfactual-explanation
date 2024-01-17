@@ -29,15 +29,15 @@ target_name = "Risk"
 sample_num = 100
 delta = 0.15
 alpha = 0.05
-U_1 = 0.5
-U_2 = 0.3
+U_1 = 0.2
+U_2 = 0.2
 n_proj = 10
 interval_left = 0
 interval_right = 1.0
 kappa = 0.001
 
-max_iter = 100
-tau = 1e3
+max_iter = 1000
+tau = 1e1
 
 # Define features for model training
 features = [
@@ -51,6 +51,8 @@ features = [
     "Duration",
     "Purpose",
 ]
+
+target_name = "Risk"
 
 explain_columns = [
     "Age",
@@ -75,13 +77,13 @@ def main():
     logger.info("Dataset loaded.")
 
     df, label_mappings = feature_encoding(
-        df=df, target_name="Risk", target_encode_dict={"good": 0, "bad": 1}
+        df=df, target_name=target_name, target_encode_dict={"good": 0, "bad": 1}
     )
 
     logger.info("Data preprocessing done.")
 
     df_X = df[features].copy()
-    df_y = target
+    df_y = df[target_name].copy()
 
     # Split data into train and test sets
     X_train, X_test, y_train, y_test = train_test_split(df_X, df_y, test_size=0.2)

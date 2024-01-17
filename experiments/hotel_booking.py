@@ -72,6 +72,8 @@ features = [
     "total_of_special_requests",
 ]
 
+target_name = "is_canceled"
+
 explain_columns = [
     "lead_time",
     "booking_changes",
@@ -91,13 +93,13 @@ def main():
     logger.info("Dataset loaded.")
 
     df, label_mappings = feature_encoding(
-        df=df, target_name="is_canceled", target_encode_dict={}
+        df=df, target_name=target_name, target_encode_dict={}
     )
 
     logger.info("Data preprocessing done.")
 
     df_X = df[features].copy()
-    df_y = target
+    df_y = df[target_name].copy()
 
     # Split data into train and test sets
     X_train, X_test, y_train, y_test = train_test_split(df_X, df_y, test_size=0.2)

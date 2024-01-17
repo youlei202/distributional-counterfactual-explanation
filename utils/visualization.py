@@ -43,9 +43,7 @@ def category_box_plot(df, x, y, hue, title):
     plt.figure(figsize=(14, 12))
 
     plt.subplot(212)
-    g2 = sns.boxplot(
-        x=x, y=y, data=df.sort_values(by=x), palette="hls", hue="Risk_state"
-    )
+    g2 = sns.boxplot(x=x, y=y, data=df.sort_values(by=x), palette="hls", hue=hue)
     g2.set_xlabel(x, fontsize=12)
     g2.set_ylabel(y, fontsize=12)
     g2.set_title(title, fontsize=15)

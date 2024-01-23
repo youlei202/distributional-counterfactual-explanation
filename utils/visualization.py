@@ -16,9 +16,9 @@ def plot_quantile(factual, counterfactual, column_name):
     plt.plot(
         quantiles_counterfactual.values, np.linspace(0, 1, 100), label="Counterfactual"
     )
-    plt.xlabel("Quantile Values")
+    plt.xlabel("Feature Values")
     plt.ylabel("Quantiles")
-    plt.title("Quantile Plot of lead_time for Factual vs Counterfactual")
+    plt.title(f"{column_name}")
     plt.legend()
     plt.grid(True)
     plt.show()

@@ -67,6 +67,18 @@ class DistributionalCounterfactualExplainer:
         self.delta = delta
         self.found_feasible_solution = False
 
+        self.wd_list = []
+        self.wd_upper_list = []
+        self.wd_lower_list = []
+
+        self.swd_list = []
+        self.swd_upper_list = []
+        self.swd_lower_list = []
+
+        self.eta_list = []
+        self.interval_left_list = []
+        self.interval_right_list = []
+
     def _update_Q(self, mu_list, nu, eta):
         n, m = (
             self.X[:, self.explain_indices].shape[0],
@@ -240,6 +252,7 @@ class DistributionalCounterfactualExplainer:
         max_iter: Optional[int] = 100,
         tau=10,
         tol=1e-6,
+        bootstrap=True,
     ):
         self.interval_left = l
         self.interval_right = r
@@ -247,21 +260,32 @@ class DistributionalCounterfactualExplainer:
         logger.info("Optimization started")
         past_Qs = [float("inf")] * 5  # Store the last 5 Q values for moving average
         for i in range(max_iter):
-            self.swd.distance(
+            swd_dist, _ = self.swd.distance(
                 X_s=self.X[:, self.explain_indices],
                 X_t=self.X_prime[:, self.explain_indices],
                 delta=self.delta,
             )
-            self.wd.distance(y_s=self.y, y_t=self.y_prime, delta=self.delta)
-            _, self.Qv_upper = self.wd.distance_interval(
-                self.y, self.y_prime, delta=self.delta, alpha=alpha
+            wd_dist, _ = self.wd.distance(
+                y_s=self.y,
+                y_t=self.y_prime,
+                delta=self.delta,
             )
-            _, self.Qu_upper = self.swd.distance_interval(
+            self.Qv_lower, self.Qv_upper = self.wd.distance_interval(
+                self.y, self.y_prime, delta=self.delta, alpha=alpha, bootstrap=bootstrap
+            )
+            self.Qu_lower, self.Qu_upper = self.swd.distance_interval(
                 self.X[:, self.explain_indices],
                 self.X_prime[:, self.explain_indices],
                 delta=self.delta,
                 alpha=alpha,
+                bootstrap=False,
             )
+
+            if not self.Qu_upper >= 0:
+                self.Qu_upper = swd_dist
+
+            if not self.Qv_upper >= 0:
+                self.Qv_upper = wd_dist
 
             (
                 eta,
@@ -276,6 +300,16 @@ class DistributionalCounterfactualExplainer:
                 r=self.interval_right,
                 kappa=kappa,
             )
+
+            self.wd_list.append(wd_dist)
+            self.swd_list.append(swd_dist)
+            self.wd_lower_list.append(self.Qv_lower)
+            self.wd_upper_list.append(self.Qv_upper)
+            self.swd_lower_list.append(self.Qu_lower)
+            self.swd_upper_list.append(self.Qu_upper)
+            self.eta_list.append(eta)
+            self.interval_left_list.append(self.interval_left)
+            self.interval_right_list.append(self.interval_right)
 
             logger.info(
                 f"U_1-Qu_upper={U_1-self.Qu_upper}, U_2-Qv_upper={U_2-self.Qv_upper}"

@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch
 
 class RBFNet(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
+    def __init__(self, input_dim, hidden_dim):
         super(RBFNet, self).__init__()
         self.hidden_dim = hidden_dim
 
@@ -11,7 +11,7 @@ class RBFNet(nn.Module):
         self.sigmas = nn.Parameter(torch.Tensor(hidden_dim))
 
         # Output layer
-        self.output = nn.Linear(hidden_dim, output_dim)
+        self.output = nn.Linear(hidden_dim, 1)
 
         # Initialize parameters
         self.init_params()

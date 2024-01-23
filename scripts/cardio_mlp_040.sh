@@ -7,13 +7,13 @@
 ### –- specify queue --
 #BSUB -q hpc
 ### -- set the job Name --
-#BSUB -J cardio
+#BSUB -J cardio_mlp_040
 ### -- ask for number of cores (default: 1) --
 #BSUB -n 4
 ### -- Select the resources: 1 gpu in exclusive process mode --
 ###BSUB -gpu "num=1:mode=exclusive_process"
 ### -- set walltime limit: hh:mm --  maximum 24 hours for GPU-queues right now
-#BSUB -W 4:00
+#BSUB -W 23:59
 # request system-memory
 #BSUB -R "rusage[mem=10GB]"
 ### -- set the email address --
@@ -26,8 +26,8 @@
 #BSUB -N
 ### -- Specify the output and error file. %J is the job-id --
 ### -- -o and -e mean append, -oo and -eo mean overwrite --
-#BSUB -oo data/cardio/logs/std.out
-#BSUB -eo data/cardio/logs/std.err
+#BSUB -oo data/cardio/mlp/U_040/logs/std.out
+#BSUB -eo data/cardio/mlp/U_040/logs/std.err
 # -- end of LSF options --
 
 
@@ -36,4 +36,4 @@ module load scipy/1.7.3-python-3.9.11
 module load python3/3.9.11
 module load cuda/11.6
 
-python3 -m experiments.cardio
+python3 -m experiments.cardio_mlp_040

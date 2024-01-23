@@ -8,12 +8,16 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from models.mlp import BlackBoxModel
+from models.svm import LinearSVM
+from models.lr import LogisticRegression
+from models.rbf import RBFNet
 import pickle
 import os
 from explainers.dce import DistributionalCounterfactualExplainer
 from explainers.distances import bootstrap_1d, bootstrap_sw
 from utils.logger_config import setup_logger
 from utils.data_processing import *
+from experiments.input_index import y_target
 
 
 logger = setup_logger()
@@ -21,22 +25,22 @@ logger = setup_logger()
 absolute_path = "/zhome/b2/8/197929/GitHub/distributional-counterfactual-explanation"
 
 read_data_path = os.path.join(absolute_path, "data/cardio")
-dump_data_path = os.path.join(absolute_path, "data/cardio/")
+dump_data_path = os.path.join(absolute_path, "data/cardio/svm")
 csv_file = "cardio.csv"
 
 # Parameters
-sample_num = 10
-delta = 0.15
+sample_num = 100
+delta = 0.1
 alpha = 0.05
 U_1 = 0.2
-U_2 = 0.2
+U_2 = 0.25
 n_proj = 10
 interval_left = 0
 interval_right = 1.0
 kappa = 0.001
 
-max_iter = 5
-tau = 1e1
+max_iter = 110
+tau = 1e2
 
 # Define features for model training
 features = [
@@ -61,8 +65,8 @@ explain_columns = [
     "gender",
     "height",
     "weight",
-    "ap_hi",
-    "ap_lo",
+    # "ap_hi",
+    # "ap_lo",
     "cholesterol",
     "gluc",
     "smoke",
@@ -70,12 +74,13 @@ explain_columns = [
     "active",
 ]
 
-y_target = torch.distributions.beta.Beta(0.1, 0.9).sample((sample_num,))
+
+# y_target = torch.distributions.beta.Beta(0.1, 0.9).sample((sample_num,))
 
 
 def main():
     # Load dataset and create a copy for manipulation
-    df_ = pd.read_csv(os.path.join(read_data_path, csv_file))
+    df_ = pd.read_csv(os.path.join(read_data_path, csv_file), sep=";")
     df = df_.copy()
 
     logger.info("Dataset loaded.")
@@ -90,7 +95,7 @@ def main():
     df_y = df[target_name].copy()
 
     # Split data into train and test sets
-    X_train, X_test, y_train, y_test = train_test_split(df_X, df_y, test_size=0.2)
+    X_train, X_test, y_train, y_test = train_test_split(df_X, df_y, test_size=0.2, random_state=42)
 
     # Normalize training and test datasets
     std = X_train.std()
@@ -105,12 +110,12 @@ def main():
     y_test_tensor = torch.FloatTensor(y_test.values).view(-1, 1)
 
     # Model initialization, defining loss and optimizer
-    model = BlackBoxModel(input_dim=X_train.shape[1])
+    model = LinearSVM(input_dim=X_train.shape[1])
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=0.01)
 
     # Model training loop
-    num_epochs = 100
+    num_epochs = 300
     for epoch in range(num_epochs):
         outputs = model(X_train_tensor)
         loss = criterion(outputs, y_train_tensor)
@@ -129,8 +134,12 @@ def main():
 
     logger.info(f"Accuracy = {accuracy.item()}")
 
-    indice = (X_test.sample(sample_num)).index
-    df_explain = X_test.loc[indice]
+    # indice = (X_test.sample(sample_num)).index
+    # df_explain = X_test.loc[indice]
+    df_explain = pd.read_csv('df_explain.csv')
+    indice = pd.Index(df_explain['Unnamed: 0'].values)
+    df_explain = df_explain.drop(columns=['Unnamed: 0'], axis=1)
+
     y = model(torch.FloatTensor(df_explain.values))
     y_true = y_test.loc[indice]
 

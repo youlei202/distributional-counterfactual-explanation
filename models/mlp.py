@@ -24,6 +24,10 @@ class BlackBoxModel(nn.Module):
         x = self.relu(self.fc2(x))
         return self.sigmoid(self.fc3(x))
 
+    def predict(self, x):
+        x = torch.FloatTensor(x)
+        return (self(x).reshape(-1) > 0.5).float().detach().numpy()
+
 
 class MNISTModel(nn.Module):
     def __init__(self, input_dim=784, hidden_dim=128, output_dim=10):

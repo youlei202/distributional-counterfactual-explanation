@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torch
 
+
 class LinearSVM(nn.Module):
     """Linear SVM Classifier"""
 
@@ -10,6 +11,10 @@ class LinearSVM(nn.Module):
 
     def forward(self, x):
         return self.fc(x)
+
+    def predict(self, x):
+        x = torch.FloatTensor(x)
+        return (self(x).reshape(-1) > 0.5).float().detach().numpy()
 
 
 def svm_loss(outputs, labels):

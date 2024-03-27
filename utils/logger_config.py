@@ -21,7 +21,7 @@ def setup_logger():
 
     # Notebook debug
     logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
     logging.debug("test")
 
     return logger

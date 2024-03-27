@@ -22,6 +22,7 @@ class DistributionalCounterfactualExplainer:
         init_eta=0.5,
         n_proj=50,
         delta=0.1,
+        costs_vector=None,
     ):
         self.X = df_X.values
         # Find indices of explain_columns in df_X
@@ -67,6 +68,13 @@ class DistributionalCounterfactualExplainer:
         self.delta = delta
         self.found_feasible_solution = False
 
+        if costs_vector is None:
+            self.costs_vector = torch.ones(len(self.explain_indices)).float()
+        else:
+            self.costs_vector = torch.tensor(costs_vector).float()
+
+        self.costs_vector_reshaped = self.costs_vector.reshape(1, -1)
+
         self.wd_list = []
         self.wd_upper_list = []
         self.wd_lower_list = []
@@ -96,11 +104,20 @@ class DistributionalCounterfactualExplainer:
             mu = mu.to(self.device)
             for i in range(n):
                 for j in range(m):
+                    # Apply the costs to the features of X and X_prime
+                    weighted_X = (
+                        self.X[:, self.explain_indices] * self.costs_vector_reshaped
+                    )
+                    weighted_X_prime = (
+                        self.X_prime[:, self.explain_indices]
+                        * self.costs_vector_reshaped
+                    )
+
                     self.term1 += (
                         mu[i, j]
                         * (
-                            torch.dot(theta, self.X[:, self.explain_indices][i])
-                            - torch.dot(theta, self.X_prime[:, self.explain_indices][j])
+                            torch.dot(theta, weighted_X[i])
+                            - torch.dot(theta, weighted_X_prime[j])
                         )
                         ** 2
                     )
@@ -138,23 +155,26 @@ class DistributionalCounterfactualExplainer:
             :, self.explain_indices
         ].clone()  # Store the gradients
 
-        # Compute the first term
+        # Weights applied to the features of X and X_prime
+        weighted_X = self.X[:, self.explain_indices] * self.costs_vector_reshaped
+        weighted_X_prime = (
+            self.X_prime[:, self.explain_indices] * self.costs_vector_reshaped
+        )
+
+        # Compute the projections with the weighted features
         X_proj = torch.stack(
-            [torch.matmul(self.X[:, self.explain_indices], theta) for theta in thetas],
+            [torch.matmul(weighted_X, theta) for theta in thetas],
             dim=1,
-        )  # [n, num_thetas]
+        )  # Shape: [n, num_thetas]
         X_prime_proj = torch.stack(
-            [
-                torch.matmul(self.X_prime[:, self.explain_indices], theta)
-                for theta in thetas
-            ],
+            [torch.matmul(weighted_X_prime, theta) for theta in thetas],
             dim=1,
-        )  # [m, num_thetas]
+        )  # Shape: [m, num_thetas]
 
         # Use broadcasting to compute differences for all i, j
         differences = (
             X_proj[:, :, None] - X_prime_proj.T[None, :, :]
-        )  # Shape [n, num_thetas, m]
+        )  # Shape: [n, num_thetas, m]
 
         # Multiply by mu and sum over j
         gradient_term1_matrix = torch.stack(
@@ -194,7 +214,12 @@ class DistributionalCounterfactualExplainer:
         self.optimizer.zero_grad()
 
         # Compute the gradients for self.X[:, self.explain_indices]
-        self._update_X_grads(mu_list=self.swd.mu_list, nu=self.wd.nu, eta=eta, tau=tau)
+        self._update_X_grads(
+            mu_list=self.swd.mu_list,
+            nu=self.wd.nu,
+            eta=eta,
+            tau=tau,
+        )
 
         # Perform an optimization step
         self.optimizer.step()
@@ -222,8 +247,8 @@ class DistributionalCounterfactualExplainer:
         past_Qs = [float("inf")] * 5  # Store the last 5 Q values for moving average
         for i in range(max_iter):
             self.swd.distance(
-                X_s=self.X[:, self.explain_indices],
-                X_t=self.X_prime[:, self.explain_indices],
+                X_s=self.X[:, self.explain_indices] * self.costs_vector_reshaped,
+                X_t=self.X_prime[:, self.explain_indices] * self.costs_vector_reshaped,
                 delta=self.delta,
             )
             self.wd.distance(y_s=self.y, y_t=self.y_prime, delta=self.delta)
@@ -261,8 +286,8 @@ class DistributionalCounterfactualExplainer:
         past_Qs = [float("inf")] * 5  # Store the last 5 Q values for moving average
         for i in range(max_iter):
             swd_dist, _ = self.swd.distance(
-                X_s=self.X[:, self.explain_indices],
-                X_t=self.X_prime[:, self.explain_indices],
+                X_s=self.X[:, self.explain_indices] * self.costs_vector_reshaped,
+                X_t=self.X_prime[:, self.explain_indices] * self.costs_vector_reshaped,
                 delta=self.delta,
             )
             wd_dist, _ = self.wd.distance(
@@ -274,8 +299,8 @@ class DistributionalCounterfactualExplainer:
                 self.y, self.y_prime, delta=self.delta, alpha=alpha, bootstrap=bootstrap
             )
             self.Qu_lower, self.Qu_upper = self.swd.distance_interval(
-                self.X[:, self.explain_indices],
-                self.X_prime[:, self.explain_indices],
+                self.X[:, self.explain_indices] * self.costs_vector_reshaped,
+                self.X_prime[:, self.explain_indices] * self.costs_vector_reshaped,
                 delta=self.delta,
                 alpha=alpha,
                 bootstrap=False,

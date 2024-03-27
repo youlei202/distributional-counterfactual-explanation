@@ -6,6 +6,8 @@ class BlackBoxModel(nn.Module):
     def __init__(self, input_dim, hidden_dim=10):
         super(BlackBoxModel, self).__init__()
 
+        self.name = "dnn"
+
         # First fully connected layer
         self.fc1 = nn.Linear(input_dim, hidden_dim)
 

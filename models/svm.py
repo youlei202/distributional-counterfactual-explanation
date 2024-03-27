@@ -9,8 +9,15 @@ class LinearSVM(nn.Module):
         super(LinearSVM, self).__init__()
         self.fc = nn.Linear(input_dim, 1)
 
+        self.name = "svm"
+
     def forward(self, x):
-        return self.fc(x)
+        out = self.fc(x)
+        # Check for NaN in the output and replace with a default value (e.g., 0)
+        if torch.isnan(out).any():
+            # Handling NaN values - can choose to set to a specific value or handle differently
+            out = torch.where(torch.isnan(out), torch.zeros_like(out), out)
+        return out
 
     def predict(self, x):
         x = torch.FloatTensor(x)

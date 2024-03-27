@@ -8,6 +8,8 @@ class RBFNet(nn.Module):
         super(RBFNet, self).__init__()
         self.hidden_dim = hidden_dim
 
+        self.name = "rbf"
+
         # Parameters for the RBF layer
         self.centers = nn.Parameter(torch.Tensor(hidden_dim, input_dim))
         self.sigmas = nn.Parameter(torch.Tensor(hidden_dim))

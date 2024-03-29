@@ -1,3 +1,9 @@
+# The code originates from https://github.com/danwley/GLOBE-CE/blob/main/models.py
+# Paper for reference:
+# Ley, Dan, Saumitra Mishra, and Daniele Magazzeni.
+# "GLOBE-CE: a translation based approach for global counterfactual explanations.
+# " International Conference on Machine Learning. PMLR, 2023.
+
 """
 
 Contents:

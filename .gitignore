@@ -6,3 +6,9 @@ data/*/counterfactual.csv
 data/*/factual.csv
 data/*/explainer.pkl
 data/*/logs/*
+datasets/*
+training_plots/*
+*.csv
+*.zip
+data/*
+pictures/
